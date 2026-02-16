@@ -2,6 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { getStripe } from "@/lib/stripe/client";
+import { headers } from "next/headers";
+
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
 
 export async function createCheckoutSession(formData: FormData) {
   const characterName = formData.get("characterName") as string;
@@ -35,8 +42,8 @@ export async function createCheckoutSession(formData: FormData) {
       character_name: characterName || "",
       theme: theme || "",
     },
-    success_url: "http://localhost:3000/orders?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: "http://localhost:3000/?canceled=true",
+    success_url: `${getBaseUrl()}/orders?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${getBaseUrl()}/?canceled=true`,
   });
 
   if (!session.url) {
