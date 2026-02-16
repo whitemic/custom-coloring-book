@@ -1,0 +1,296 @@
+import { createServerClient } from "./server";
+import type {
+  OrderRow,
+  CharacterManifestRow,
+  PageRow,
+  OrderStatus,
+  PageStatus,
+} from "@/types/database";
+import type { CharacterManifest } from "@/types/manifest";
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+/**
+ * Idempotent order insert. Uses ON CONFLICT on stripe_checkout_session_id
+ * to prevent duplicates if Stripe delivers the webhook more than once.
+ *
+ * Returns the order row if inserted, or null if the row already existed.
+ */
+export async function upsertOrder(params: {
+  stripeCheckoutSessionId: string;
+  stripeCustomerEmail: string;
+  amountCents: number;
+  currency: string;
+  userInput: Record<string, unknown>;
+}): Promise<OrderRow | null> {
+  const db = createServerClient();
+
+  const { data, error } = await db
+    .from("orders")
+    .upsert(
+      {
+        stripe_checkout_session_id: params.stripeCheckoutSessionId,
+        stripe_customer_email: params.stripeCustomerEmail,
+        amount_cents: params.amountCents,
+        currency: params.currency,
+        user_input: params.userInput,
+        status: "pending",
+      },
+      { onConflict: "stripe_checkout_session_id", ignoreDuplicates: true },
+    )
+    .select()
+    .single();
+
+  if (error && error.code === "PGRST116") {
+    // No rows returned -- duplicate, row already existed
+    return null;
+  }
+
+  if (error) throw error;
+  return data as unknown as OrderRow;
+}
+
+export async function getOrder(orderId: string): Promise<OrderRow> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("orders")
+    .select("*")
+    .eq("id", orderId)
+    .single();
+
+  if (error) throw error;
+  return data as unknown as OrderRow;
+}
+
+/**
+ * Look up an order by Stripe checkout session ID.
+ * Used after checkout redirect to resolve the session to an order UUID.
+ */
+export async function getOrderBySessionId(
+  sessionId: string,
+): Promise<OrderRow | null> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("orders")
+    .select("*")
+    .eq("stripe_checkout_session_id", sessionId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as unknown as OrderRow) ?? null;
+}
+
+/**
+ * Fetch all orders for a given email address, most recent first.
+ * Used for the email-based order lookup page.
+ */
+export async function getOrdersByEmail(email: string): Promise<OrderRow[]> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("orders")
+    .select("*")
+    .eq("stripe_customer_email", email)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data as unknown as OrderRow[]) ?? [];
+}
+
+/**
+ * Fetch all pages for an order, sorted by page number.
+ * Used on the order detail page to show progress and thumbnails.
+ */
+export async function getPagesByOrderId(orderId: string): Promise<PageRow[]> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("pages")
+    .select("*")
+    .eq("order_id", orderId)
+    .order("page_number", { ascending: true });
+
+  if (error) throw error;
+  return (data as unknown as PageRow[]) ?? [];
+}
+
+export async function updateOrderStatus(
+  orderId: string,
+  status: OrderStatus,
+): Promise<void> {
+  const db = createServerClient();
+  const { error } = await db
+    .from("orders")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", orderId);
+
+  if (error) throw error;
+}
+
+export async function updateOrderPdfUrl(
+  orderId: string,
+  pdfUrl: string,
+): Promise<void> {
+  const db = createServerClient();
+  const { error } = await db
+    .from("orders")
+    .update({ pdf_url: pdfUrl, updated_at: new Date().toISOString() })
+    .eq("id", orderId);
+
+  if (error) throw error;
+}
+
+// ---------------------------------------------------------------------------
+// Character Manifests
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the existing manifest for an order, or null if none exists.
+ * Used to make Step 1 idempotent on retry.
+ */
+export async function getManifestByOrderId(
+  orderId: string,
+): Promise<CharacterManifestRow | null> {
+  const db = createServerClient();
+
+  const { data, error } = await db
+    .from("character_manifests")
+    .select("*")
+    .eq("order_id", orderId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return (data as unknown as CharacterManifestRow) ?? null;
+}
+
+/**
+ * Idempotent manifest insert. If a manifest already exists for this order,
+ * returns the existing row instead of inserting a duplicate.
+ */
+export async function insertManifest(
+  orderId: string,
+  manifest: CharacterManifest,
+  rawLlmResponse?: Record<string, unknown>,
+): Promise<CharacterManifestRow> {
+  // Check for existing manifest first (idempotency guard)
+  const existing = await getManifestByOrderId(orderId);
+  if (existing) return existing;
+
+  const db = createServerClient();
+
+  const { data, error } = await db
+    .from("character_manifests")
+    .insert({
+      order_id: orderId,
+      character_name: manifest.characterName,
+      age_range: manifest.ageRange,
+      hair: manifest.hair,
+      skin_tone: manifest.skinTone,
+      outfit: manifest.outfit,
+      theme: manifest.theme,
+      style_tags: manifest.styleTags,
+      negative_tags: manifest.negativeTags,
+      raw_llm_response: rawLlmResponse ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as unknown as CharacterManifestRow;
+}
+
+// ---------------------------------------------------------------------------
+// Pages
+// ---------------------------------------------------------------------------
+
+export interface PageInsert {
+  pageNumber: number;
+  seed: number;
+  sceneDescription: string;
+  fullPrompt: string;
+}
+
+/**
+ * Idempotent page insert. If pages already exist for this order,
+ * returns the existing rows instead of inserting duplicates.
+ */
+export async function insertPages(
+  orderId: string,
+  manifestId: string,
+  pages: PageInsert[],
+): Promise<PageRow[]> {
+  const db = createServerClient();
+
+  // Check if pages already exist for this order (idempotency guard)
+  const { data: existing } = await db
+    .from("pages")
+    .select("*")
+    .eq("order_id", orderId)
+    .order("page_number", { ascending: true });
+
+  if (existing && existing.length > 0) {
+    return existing as unknown as PageRow[];
+  }
+
+  const rows = pages.map((p) => ({
+    order_id: orderId,
+    manifest_id: manifestId,
+    page_number: p.pageNumber,
+    seed: p.seed,
+    scene_description: p.sceneDescription,
+    full_prompt: p.fullPrompt,
+    status: "pending",
+  }));
+
+  const { data, error } = await db.from("pages").insert(rows).select();
+
+  if (error) throw error;
+  return data as unknown as PageRow[];
+}
+
+export async function getPendingPages(orderId: string): Promise<PageRow[]> {
+  const db = createServerClient();
+
+  const { data, error } = await db
+    .from("pages")
+    .select("*")
+    .eq("order_id", orderId)
+    .eq("status", "pending")
+    .order("page_number", { ascending: true });
+
+  if (error) throw error;
+  return data as unknown as PageRow[];
+}
+
+export async function updatePageImage(
+  pageId: string,
+  imageUrl: string,
+  predictionId: string,
+): Promise<void> {
+  const db = createServerClient();
+
+  const { error } = await db
+    .from("pages")
+    .update({
+      image_url: imageUrl,
+      replicate_prediction_id: predictionId,
+      status: "complete" as PageStatus,
+    })
+    .eq("id", pageId);
+
+  if (error) throw error;
+}
+
+export async function updatePageStatus(
+  pageId: string,
+  status: PageStatus,
+): Promise<void> {
+  const db = createServerClient();
+
+  const { error } = await db
+    .from("pages")
+    .update({ status })
+    .eq("id", pageId);
+
+  if (error) throw error;
+}
