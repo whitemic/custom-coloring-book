@@ -1,0 +1,15 @@
+import { createBrowserClient } from "@supabase/ssr";
+
+/**
+ * Browser-side Supabase client (for use in Client Components).
+ * Uses the public anon key -- respects RLS.
+ *
+ * Note: Database generic is omitted until we generate types
+ * from the running Supabase instance via `supabase gen types`.
+ */
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  );
+}
