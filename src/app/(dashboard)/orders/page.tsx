@@ -53,11 +53,13 @@ function OrderLookup() {
 
   const [step, setStep] = useState<Step>("loading");
   const [email, setEmail] = useState("");
+  const [orderIdHint, setOrderIdHint] = useState("");
   const [code, setCode] = useState("");
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const router = useRouter();
 
   // On mount, check for an existing session (session_id is handled by redirect to /orders/pending)
   useEffect(() => {
@@ -115,19 +117,21 @@ function OrderLookup() {
       setError(null);
       setLoading(true);
 
-      const result = await verifyCodeAndLookup(email, code);
+      const result = await verifyCodeAndLookup(email, code, orderIdHint || undefined);
 
       setLoading(false);
 
       if (result.error) {
         setError(result.error);
+      } else if (result.redirectOrderId) {
+        router.push(`/orders/${result.redirectOrderId}`);
       } else {
         setOrders(result.orders);
         setSessionEmail(email);
         setStep("results");
       }
     },
-    [email, code],
+    [email, code, orderIdHint, router],
   );
 
   const handleResendCode = useCallback(async () => {
@@ -166,7 +170,7 @@ function OrderLookup() {
               verification code to confirm it&apos;s you.
             </p>
 
-            <form onSubmit={handleSendCode} className="mt-8">
+            <form onSubmit={handleSendCode} className="mt-8 space-y-4">
               <div className="flex gap-3">
                 <input
                   type="email"
@@ -183,6 +187,19 @@ function OrderLookup() {
                 >
                   {loading ? "Sending..." : "Send code"}
                 </button>
+              </div>
+              <div>
+                <label htmlFor="orderIdHint" className="block text-left text-sm text-zinc-500 dark:text-zinc-400">
+                  Optional: Order ID
+                </label>
+                <input
+                  id="orderIdHint"
+                  type="text"
+                  value={orderIdHint}
+                  onChange={(e) => setOrderIdHint(e.target.value)}
+                  placeholder="e.g. a1b2c3d4"
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-900 shadow-sm placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                />
               </div>
             </form>
 
