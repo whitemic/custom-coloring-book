@@ -29,20 +29,24 @@ export interface CharacterManifestRow {
   id: string;
   order_id: string;
   character_name: string;
-  age_range: string;
+  character_type: string;
+  species: string | null;
+  physical_description: string | null;
+  character_key_features: string[];
+  age_range: string | null;
   hair: {
     style: string;
     color: string;
     length: string;
     texture: string;
-  };
-  skin_tone: string;
+  } | null;
+  skin_tone: string | null;
   outfit: {
     top: string;
     bottom: string;
     shoes: string;
     accessories: string[];
-  };
+  } | null;
   theme: string;
   style_tags: string[];
   negative_tags: string[];
