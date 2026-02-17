@@ -225,7 +225,8 @@ function getQualityNegativePrompts(
     if (manifest.species) {
       // Add other common species that might be confused
       const commonSpecies = ["cat", "dog", "frog", "dragon", "unicorn", "bear"];
-      const wrongSpecies = commonSpecies.filter((s) => s !== manifest.species.toLowerCase());
+      const speciesLower = manifest.species.toLowerCase();
+      const wrongSpecies = commonSpecies.filter((s) => s !== speciesLower);
       baseNegatives.push(...wrongSpecies.slice(0, 3)); // Limit to avoid prompt bloat
     }
   } else if (manifest.species) {
