@@ -51,6 +51,7 @@ export async function createCheckoutSession(formData: FormData) {
     },
     success_url: `${getBaseUrl()}/orders/pending?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${getBaseUrl()}/?canceled=true`,
+    allow_promotion_codes: true,
   });
 
   if (!session.url) {

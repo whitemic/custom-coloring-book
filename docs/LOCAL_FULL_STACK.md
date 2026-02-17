@@ -120,7 +120,7 @@ Leave both running.
 ## 6. Test the flow
 
 1. Open http://localhost:3000
-2. Fill the form and complete checkout (Stripe test card `4242 4242 4242 4242`)
+2. Fill the form and complete checkout (Stripe test card `4242 4242 4242 4242`). **For testing without payment**, create a 100% off coupon in Stripe Dashboard (Products → Coupons), add a promotion code (e.g. `TEST100`), and enter it at checkout.
 3. You should land on `/orders/pending` then redirect to the order detail when the webhook runs
 4. The Stripe CLI terminal will show the forwarded event; the app creates the order in local Supabase
 5. Inngest will pick up the order and run the generation pipeline (if Replicate/OpenAI keys are set)
