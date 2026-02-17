@@ -18,10 +18,27 @@ export const OutfitSchema = z.object({
 
 export const CharacterManifestSchema = z.object({
   characterName: z.string(),
-  ageRange: z.string(),
-  hair: HairSchema,
-  skinTone: z.string(),
-  outfit: OutfitSchema,
+  characterType: z
+    .enum(["human", "animal", "fantasy", "other"])
+    .describe("The type of character: human, animal, fantasy creature, or other"),
+  species: z
+    .string()
+    .nullable()
+    .describe("Specific species if non-human (e.g. 'frog', 'dragon', 'cat'), or null if not applicable"),
+  physicalDescription: z
+    .string()
+    .nullable()
+    .describe("Detailed physical description for non-human characters (key features, body shape, distinctive markings), or null if not applicable"),
+  ageRange: z
+    .string()
+    .nullable()
+    .describe("Age range for human characters (e.g. '5-7', '4-6'), or null if not applicable"),
+  hair: HairSchema.nullable().describe("Hair details for human characters, or null if not applicable"),
+  skinTone: z.string().nullable().describe("Skin tone for human characters, or null if not applicable"),
+  outfit: OutfitSchema.nullable().describe("Outfit details for human characters, or null if not applicable"),
+  characterKeyFeatures: z
+    .array(z.string())
+    .describe("Distinct visual features that must appear consistently across all pages (e.g. 'top hat', 'groovy pattern', 'large eyes', 'striped shirt')"),
   theme: z.string(),
   styleTags: z.array(z.string()).min(3),
   negativeTags: z.array(z.string()),

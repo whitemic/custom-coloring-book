@@ -72,12 +72,23 @@ export const generateBook = inngest.createFunction(
         );
       }
 
+      // Build manifest with backward compatibility for existing rows
       const manifest: CharacterManifest = {
         characterName: manifestRow.character_name,
-        ageRange: manifestRow.age_range,
-        hair: manifestRow.hair as CharacterManifest["hair"],
-        skinTone: manifestRow.skin_tone,
-        outfit: manifestRow.outfit,
+        characterType:
+          (manifestRow.character_type as CharacterManifest["characterType"]) ||
+          "human", // Default to human for backward compatibility
+        species: manifestRow.species ?? null,
+        physicalDescription: manifestRow.physical_description ?? null,
+        characterKeyFeatures: manifestRow.character_key_features ?? [],
+        ageRange: manifestRow.age_range ?? null,
+        hair: manifestRow.hair
+          ? (manifestRow.hair as CharacterManifest["hair"])
+          : null,
+        skinTone: manifestRow.skin_tone ?? null,
+        outfit: manifestRow.outfit
+          ? (manifestRow.outfit as CharacterManifest["outfit"])
+          : null,
         theme: manifestRow.theme,
         styleTags: manifestRow.style_tags,
         negativeTags: manifestRow.negative_tags,

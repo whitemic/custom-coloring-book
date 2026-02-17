@@ -83,6 +83,23 @@ export async function getOrderBySessionId(
 }
 
 /**
+ * Check whether any order exists for the given email.
+ * Used to avoid sending verification emails to non-customers.
+ */
+export async function hasOrdersForEmail(email: string): Promise<boolean> {
+  const db = createServerClient();
+  const { data, error } = await db
+    .from("orders")
+    .select("id")
+    .eq("stripe_customer_email", email)
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data != null;
+}
+
+/**
  * Fetch all orders for a given email address, most recent first.
  * Used for the email-based order lookup page.
  */
@@ -183,6 +200,10 @@ export async function insertManifest(
     .insert({
       order_id: orderId,
       character_name: manifest.characterName,
+      character_type: manifest.characterType,
+      species: manifest.species,
+      physical_description: manifest.physicalDescription,
+      character_key_features: manifest.characterKeyFeatures ?? [],
       age_range: manifest.ageRange,
       hair: manifest.hair,
       skin_tone: manifest.skinTone,
