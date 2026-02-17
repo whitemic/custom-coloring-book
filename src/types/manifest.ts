@@ -39,7 +39,11 @@ export const CharacterManifestSchema = z.object({
   characterKeyFeatures: z
     .array(z.string())
     .describe("Distinct visual features that must appear consistently across all pages (e.g. 'top hat', 'groovy pattern', 'large eyes', 'striped shirt')"),
-  theme: z.string(),
+  theme: z
+    .string()
+    .describe(
+      "The book's theme/setting from the user (e.g. 'space explorer visiting different planets'). Must match user's chosen theme when provided; drives scenes and backgrounds.",
+    ),
   styleTags: z.array(z.string()).min(3),
   negativeTags: z.array(z.string()),
 });

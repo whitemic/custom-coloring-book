@@ -1,8 +1,10 @@
 import { createHash } from "crypto";
 import { generateObject } from "ai";
-import { openai } from "@ai-sdk/openai";
 import { z } from "zod";
 import type { CharacterManifest } from "@/types/manifest";
+import type { PageContext } from "./generate-context";
+import { getModel } from "./models";
+import type { PriceTier } from "./config";
 
 // ---------------------------------------------------------------------------
 // Seed generation
@@ -63,18 +65,20 @@ OUTPUT: Return exactly 3 scene objects in the provided JSON schema.`;
 
 /**
  * Generate 3 unique scene descriptions for a coloring book based on the manifest.
+ * Uses getModel('low', priceTier) for cost-efficient generation.
  */
 export async function generateSceneDescriptions(
   manifest: CharacterManifest,
+  priceTier: PriceTier,
 ): Promise<string[]> {
   // Build character description based on type
   let characterDesc = `Name: ${manifest.characterName}\n`;
   characterDesc += `Character Type: ${manifest.characterType}\n`;
-  
+
   if (manifest.species) {
     characterDesc += `Species: ${manifest.species}\n`;
   }
-  
+
   if (manifest.characterType === "human") {
     if (manifest.ageRange) {
       characterDesc += `Age: ${manifest.ageRange}\n`;
@@ -93,16 +97,17 @@ export async function generateSceneDescriptions(
       characterDesc += `Physical Description: ${manifest.physicalDescription}\n`;
     }
   }
-  
+
   if (manifest.characterKeyFeatures && manifest.characterKeyFeatures.length > 0) {
     characterDesc += `Key Features: ${manifest.characterKeyFeatures.join(", ")}\n`;
   }
-  
+
   characterDesc += `Theme: ${manifest.theme}\n`;
   characterDesc += `Style: ${manifest.styleTags.join(", ")}`;
 
+  const model = getModel("low", priceTier);
   const { object } = await generateObject({
-    model: openai("gpt-4o-mini"),
+    model,
     schema: ScenesSchema,
     system: SCENE_SYSTEM_PROMPT,
     prompt: `Character Manifest:\n\n${characterDesc}`,
@@ -113,138 +118,52 @@ export async function generateSceneDescriptions(
     .map((s) => s.description);
 }
 
-// ---------------------------------------------------------------------------
-// Background elements helper
-// ---------------------------------------------------------------------------
-
-/**
- * Get theme-appropriate background element suggestions for coloring book pages.
- * Returns a string describing background elements that match the theme.
- */
-function getBackgroundElementsForTheme(theme: string): string {
-  const themeLower = theme.toLowerCase();
-  
-  // Water/aquatic themes
-  if (themeLower.includes("water") || themeLower.includes("ocean") || 
-      themeLower.includes("sea") || themeLower.includes("lily") || 
-      themeLower.includes("pond") || themeLower.includes("lake")) {
-    return "lily pads, water ripples, reeds, aquatic plants, flowers, dragonflies, decorative borders, bubbles, water patterns";
-  }
-  
-  // Space themes
-  if (themeLower.includes("space") || themeLower.includes("cosmic") || 
-      themeLower.includes("planet") || themeLower.includes("star") || 
-      themeLower.includes("galaxy")) {
-    return "stars, planets, asteroids, moons, decorative borders, cosmic patterns, nebula patterns, space clouds";
-  }
-  
-  // Forest/nature themes
-  if (themeLower.includes("forest") || themeLower.includes("wood") || 
-      themeLower.includes("tree") || themeLower.includes("nature") || 
-      themeLower.includes("garden") || themeLower.includes("jungle")) {
-    return "trees, leaves, flowers, mushrooms, decorative borders, vines, plants, butterflies, birds, nature patterns";
-  }
-  
-  // Underwater themes
-  if (themeLower.includes("underwater") || themeLower.includes("coral") || 
-      themeLower.includes("reef")) {
-    return "bubbles, coral, seaweed, fish, shells, decorative borders, underwater plants, water patterns";
-  }
-  
-  // Desert themes
-  if (themeLower.includes("desert") || themeLower.includes("sand")) {
-    return "cacti, sand dunes, decorative borders, desert plants, rocks, sun patterns, geometric patterns";
-  }
-  
-  // Sky/cloud themes
-  if (themeLower.includes("sky") || themeLower.includes("cloud")) {
-    return "clouds, birds, decorative borders, sun, moon, stars, sky patterns, weather elements";
-  }
-  
-  // Default: general decorative elements
-  return "decorative borders, patterns, flowers, stars, clouds, plants, geometric shapes, ornamental details";
-}
-
-// ---------------------------------------------------------------------------
-// Quality control negative prompts
-// ---------------------------------------------------------------------------
-
-/**
- * Get quality control negative prompts to prevent common generation artifacts.
- * These are added to every prompt to reduce issues like two heads, extra limbs, etc.
- */
-function getQualityNegativePrompts(
-  manifest: CharacterManifest,
-): string[] {
-  const baseNegatives = [
-    "two heads",
-    "multiple heads",
-    "extra heads",
-    "double head",
-    "duplicate head",
-    "extra limbs",
-    "malformed anatomy",
-    "inconsistent character design",
-    "different character",
-    "wrong character",
-    "duplicate features",
-    "malformed",
-    "deformed",
-    "distorted",
-    "empty background",
-    "minimal background",
-    "bare background",
-    "plain background",
-    "sparse details",
-    "color",
-    "colored",
-    "colored in",
-    "filled color",
-    "color fill",
-    "shading",
-    "shaded",
-    "gradient",
-    "gradients",
-    "gray",
-    "grey",
-    "gray scale",
-    "greyscale",
-    "tone",
-    "tones",
-    "fill",
-    "filled",
-    "painted",
-    "paint",
-    "texture fill",
-    "pattern fill",
-  ];
-
-  // Add character-type-specific negatives
-  if (manifest.characterType !== "human") {
-    baseNegatives.push("human", "human child", "person");
-    if (manifest.species) {
-      // Add other common species that might be confused
-      const commonSpecies = ["cat", "dog", "frog", "dragon", "unicorn", "bear"];
-      const speciesLower = manifest.species.toLowerCase();
-      const wrongSpecies = commonSpecies.filter((s) => s !== speciesLower);
-      baseNegatives.push(...wrongSpecies.slice(0, 3)); // Limit to avoid prompt bloat
-    }
-  } else if (manifest.species) {
-    // If somehow human but has species, add that species to negatives
-    baseNegatives.push(manifest.species);
-  }
-
-  return baseNegatives;
-}
+/** Universal quality negatives always included in every page prompt. */
+const QUALITY_NEGATIVES = [
+  "two heads",
+  "multiple heads",
+  "extra heads",
+  "extra limbs",
+  "malformed anatomy",
+  "inconsistent character design",
+  "different character",
+  "wrong character",
+  "empty background",
+  "minimal background",
+  "color",
+  "colored",
+  "shading",
+  "shaded",
+  "gradient",
+  "gray",
+  "grey",
+  "greyscale",
+  "fill",
+  "filled",
+  "painted",
+];
 
 // ---------------------------------------------------------------------------
 // Prompt composition
 // ---------------------------------------------------------------------------
 
 /**
+ * Format background elements from PageContext into a single string for the prompt.
+ */
+function formatBackgroundElements(context: PageContext): string {
+  const { foreground, midground, background } = context.backgroundElements;
+  return [
+    ...foreground,
+    ...midground,
+    ...background,
+  ].join(", ");
+}
+
+/**
  * Compose the full Replicate prompt for a single page.
  * Re-states the character description from the manifest in every prompt
  * to ensure Flux.1 renders a visually coherent character across all pages.
+ * Uses dynamic pageContext for background elements and scene-specific negatives.
  *
  * The seed is logged in the prompt text for traceability but is passed
  * as a separate Replicate parameter (not parsed from the text).
@@ -253,27 +172,30 @@ export function composePagePrompt(
   manifest: CharacterManifest,
   scene: string,
   seed: number,
+  pageContext: PageContext,
 ): string {
   const parts: string[] = [
     "Pure black and white line art coloring book page. ONLY black lines on white background. NO color, NO shading, NO gradients, NO gray tones, NO fills, NO painted areas. Bold clean outlines only. Detailed coloring book style with rich backgrounds and white spaces for coloring.",
   ];
 
-  // Character consistency header - CRITICAL for maintaining same character
+  // Explicit theme so the image model respects it
   parts.push(
-    `THE EXACT SAME CHARACTER named ${manifest.characterName}. ONE HEAD ONLY. Single character, single head, single body. Maintain IDENTICAL character appearance and consistency with previous pages.`,
+    `Theme: ${manifest.theme}. Scene and all background elements must match this theme.`,
+  );
+
+  // Character consistency: one clear statement (no repetition)
+  parts.push(
+    `THE EXACT SAME CHARACTER named ${manifest.characterName}. ONE HEAD ONLY. Single character, single body. Maintain IDENTICAL character appearance and consistency with previous pages.`,
   );
 
   // Character description based on type
   if (manifest.characterType === "human") {
-    // Human character description
     if (manifest.ageRange) {
       parts.push(
-        `A ${manifest.ageRange} year old character named ${manifest.characterName}. ONE HEAD ONLY. Single character with single head and single body.`,
+        `A ${manifest.ageRange} year old named ${manifest.characterName}.`,
       );
     } else {
-      parts.push(
-        `A character named ${manifest.characterName}. ONE HEAD ONLY. Single character with single head and single body.`,
-      );
+      parts.push(`A character named ${manifest.characterName}.`);
     }
 
     if (manifest.hair) {
@@ -283,9 +205,13 @@ export function composePagePrompt(
     }
 
     if (manifest.outfit) {
-      parts.push(
-        `wearing ${manifest.outfit.top} and ${manifest.outfit.bottom}, ${manifest.outfit.shoes}.`,
-      );
+      const top = manifest.outfit.top || "";
+      const bottom = manifest.outfit.bottom || "";
+      const clothes =
+        [top, bottom].filter(Boolean).length > 0
+          ? [top, bottom].filter(Boolean).join(" and ")
+          : "clothes";
+      parts.push(`wearing ${clothes}, ${manifest.outfit.shoes}.`);
 
       if (manifest.outfit.accessories.length > 0) {
         parts.push(`Accessories: ${manifest.outfit.accessories.join(", ")}.`);
@@ -296,77 +222,52 @@ export function composePagePrompt(
       parts.push(`Skin tone: ${manifest.skinTone}.`);
     }
   } else {
-    // Non-human character description
     const characterTypeDesc =
       manifest.species || manifest.characterType || "character";
     parts.push(
-      `THE SAME ${characterTypeDesc} character named ${manifest.characterName}. ONE HEAD ONLY. Single character with single head and single body.`,
+      `THE SAME ${characterTypeDesc} named ${manifest.characterName}. ONE HEAD ONLY. Single character, single body.`,
     );
 
     if (manifest.physicalDescription) {
       parts.push(`Physical appearance: ${manifest.physicalDescription}.`);
     }
 
-    // Repeat species/type for emphasis
     if (manifest.species) {
       parts.push(`This is a ${manifest.species}, not a human or other species.`);
     }
   }
 
-  // Character key features - CRITICAL for consistency
+  // Key features: state once
   if (manifest.characterKeyFeatures && manifest.characterKeyFeatures.length > 0) {
     parts.push(
       `Key features that MUST appear: ${manifest.characterKeyFeatures.join(", ")}.`,
     );
-    // Repeat key features in different phrasing for emphasis
+  }
+
+  // Scene description
+  parts.push(`Scene: ${scene}.`);
+
+  // Rich background from context (no redundant "multiple layers" line)
+  const backgroundStr = formatBackgroundElements(pageContext);
+  if (backgroundStr) {
     parts.push(
-      `Always include these distinctive features: ${manifest.characterKeyFeatures.join(", ")}.`,
+      `Rich detailed background filled with colorable elements: ${backgroundStr}.`,
     );
   }
 
-  // Scene description (comes after character description)
-  parts.push(`Scene: ${scene}.`);
-
-  // Rich background elements - CRITICAL for coloring book quality
-  const backgroundElements = getBackgroundElementsForTheme(manifest.theme);
-  parts.push(
-    `Rich detailed background filled with colorable elements: ${backgroundElements}.`,
-  );
-  parts.push(
-    `Multiple layers: foreground decorative elements (flowers, stars, patterns, borders), midground details (plants, objects, environmental elements), background patterns and textures.`,
-  );
-  parts.push(
-    `Background should be filled with theme-appropriate decorative elements, patterns, borders, and environmental details that children can color.`,
-  );
-
-  // Style tags
+  // Style
   parts.push(`Style: ${manifest.styleTags.join(", ")}.`);
 
-  // CRITICAL: Pure black and white line art instructions
-  parts.push(
-    `IMPORTANT: This is a coloring book page. Generate ONLY pure black lines on pure white background. NO colors, NO shading, NO gray tones, NO gradients, NO fills, NO painted areas. Only black outlines and line art. Children will color this page themselves.`,
-  );
-
-  // Negative prompts - combine manifest negatives, quality controls, and defaults
-  const qualityNegatives = getQualityNegativePrompts(manifest);
-  const allNegatives = [
+  // Negatives: deduplicate so we don't repeat the same phrase
+  const negativeSet = new Set([
     ...manifest.negativeTags,
-    ...qualityNegatives,
+    ...QUALITY_NEGATIVES,
+    ...pageContext.sceneSpecificNegatives,
     "realistic",
     "photographic",
-    "color",
-    "colored",
     "colored in",
-    "gradient",
-    "shading",
-    "shaded",
-    "gray",
-    "grey",
-    "greyscale",
-    "fill",
-    "filled",
-    "painted",
-  ];
+  ]);
+  const allNegatives = [...negativeSet];
   parts.push(`Negative: ${allNegatives.join(", ")}.`);
 
   // Seed for traceability

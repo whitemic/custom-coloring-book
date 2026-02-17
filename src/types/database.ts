@@ -4,6 +4,7 @@
  */
 
 export type OrderStatus =
+  | "pending_payment"
   | "pending"
   | "manifest_generated"
   | "generating"
@@ -12,17 +13,24 @@ export type OrderStatus =
 
 export type PageStatus = "pending" | "generating" | "complete" | "failed";
 
+export type OrderPriceTier = "standard" | "premium";
+
 export interface OrderRow {
   id: string;
-  stripe_checkout_session_id: string;
-  stripe_customer_email: string;
+  /** Set when payment completes (webhook). Null while status is pending_payment. */
+  stripe_checkout_session_id: string | null;
+  /** Set when payment completes (webhook). Null while status is pending_payment. */
+  stripe_customer_email: string | null;
   status: OrderStatus;
-  amount_cents: number;
+  /** Set when payment completes (webhook). Null while status is pending_payment. */
+  amount_cents: number | null;
   currency: string;
   user_input: Record<string, unknown>;
   pdf_url: string | null;
   created_at: string;
   updated_at: string;
+  /** Set at checkout or from Stripe; used for model selection. */
+  price_tier?: OrderPriceTier;
 }
 
 export interface CharacterManifestRow {

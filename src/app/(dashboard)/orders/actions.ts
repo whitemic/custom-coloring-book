@@ -1,7 +1,7 @@
 "use server";
 
 import { createAuthClient } from "@/lib/supabase/auth-server";
-import { getOrderBySessionId } from "@/lib/supabase/queries";
+import { getOrderBySessionId, hasOrdersForEmail } from "@/lib/supabase/queries";
 import { verificationLimiter } from "@/lib/rate-limit";
 import type { OrderStatus } from "@/types/database";
 
@@ -51,7 +51,7 @@ export async function getSessionOrders(): Promise<{
       id: r.id as string,
       status: r.status as OrderStatus,
       createdAt: r.created_at as string,
-      amountCents: r.amount_cents as number,
+      amountCents: r.amount_cents ?? 0,
       currency: r.currency as string,
     }));
 
@@ -65,9 +65,15 @@ export async function getSessionOrders(): Promise<{
 // Step 1: Send verification code
 // ---------------------------------------------------------------------------
 
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  return "http://localhost:3000";
+}
+
 /**
  * Send a magic link + 6-digit OTP to the given email via Supabase Auth.
- * Supabase handles generation, hashing, rate limiting, and email delivery.
+ * Only sends if the email has at least one order (avoids emailing non-customers).
  */
 export async function sendVerificationCode(
   email: string,
@@ -79,12 +85,21 @@ export async function sendVerificationCode(
   }
 
   try {
+    const hasOrders = await hasOrdersForEmail(trimmed);
+    if (!hasOrders) {
+      return {
+        success: false,
+        error:
+          "We don't have any orders under that email. Please check the address or use the email you used at checkout.",
+      };
+    }
+
     const supabase = await createAuthClient();
 
     const { error } = await supabase.auth.signInWithOtp({
       email: trimmed,
       options: {
-        emailRedirectTo: "http://localhost:3000/auth/callback?next=/orders",
+        emailRedirectTo: `${getBaseUrl()}/auth/callback?next=/orders`,
         shouldCreateUser: true,
       },
     });
@@ -166,7 +181,7 @@ export async function verifyCodeAndLookup(
       id: r.id as string,
       status: r.status as OrderStatus,
       createdAt: r.created_at as string,
-      amountCents: r.amount_cents as number,
+      amountCents: r.amount_cents ?? 0,
       currency: r.currency as string,
     }));
 

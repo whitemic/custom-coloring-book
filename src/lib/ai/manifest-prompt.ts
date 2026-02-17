@@ -34,7 +34,14 @@ RULES:
    - Include: physical features that make the character recognizable (e.g., "large round eyes", "striped pattern", "top hat")
    - This array is CRITICAL for maintaining consistency - be thorough and specific
 
-5. DESCRIPTOR QUALITY:
+5. THEME (CRITICAL for scene/background generation):
+   - The user may provide a separate "Theme / Adventure" (e.g. "space explorer visiting different planets", "dinosaur adventure", "underwater kingdom").
+   - When the user provides a theme/setting, set the theme field to that exactly or to a short, clear expansion (e.g. "space explorer visiting different planets" or "space exploration, visiting different planets").
+   - Do NOT replace the user's theme with a generic or unrelated theme (e.g. do not use "sunset picnic" or "outdoor play" if the user said "space explorer").
+   - If no theme is provided, infer a child-friendly theme that fits the character description.
+   - The theme field drives all scene descriptions and background elements later; it must match what the user asked for.
+
+6. DESCRIPTOR QUALITY:
    - Prioritize descriptors that translate well to BLACK-AND-WHITE LINE ART. Focus on:
      - Texture and pattern (e.g. "curly" hair, "striped" shirt, "polka-dot" dress, "spotted" fur)
      - Silhouette and shape (e.g. "puffy sleeves," "wide-brim hat," "long braids", "round body", "large eyes")
@@ -42,14 +49,14 @@ RULES:
    - Avoid vague descriptors. Be specific: "wavy shoulder-length auburn hair in a half-up ponytail" is better than "nice hair"
    - For non-human characters: "smooth green skin with darker green spots" is better than "green"
 
-6. STYLE AND NEGATIVE TAGS:
+7. STYLE AND NEGATIVE TAGS:
    - The styleTags array must contain at least 3 tags that describe the overall art style. Always include "bold outlines," "no shading," "pure black and white," "line art only," and at least one mood/aesthetic tag (e.g. "whimsical," "adventurous," "playful")
    - IMPORTANT: Include style tags that encourage detailed backgrounds: "detailed backgrounds," "decorative elements," "rich environments," "ornamental details," or similar tags that emphasize coloring book aesthetics with plenty of detail
    - CRITICAL: Style tags must emphasize pure black and white line art: "pure black and white," "line art only," "no color," "no shading," "outline only"
    - The negativeTags array should list things to EXCLUDE from generation. Always include: "realistic," "photographic," "color," "colored," "color fill," "gradient," "shading," "shaded," "gray," "grey," "greyscale," "fill," "filled," "painted," "3D render"
    - For non-human characters, add the wrong species/type to negativeTags (e.g., if frog, add "human", "mammal")
 
-7. NAMING:
+8. NAMING:
    - If the user mentions a name, use it as characterName. If not, use "the character" as a placeholder
 
 EXAMPLES:

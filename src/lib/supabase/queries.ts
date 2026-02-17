@@ -13,43 +13,66 @@ import type { CharacterManifest } from "@/types/manifest";
 // ---------------------------------------------------------------------------
 
 /**
- * Idempotent order insert. Uses ON CONFLICT on stripe_checkout_session_id
- * to prevent duplicates if Stripe delivers the webhook more than once.
- *
- * Returns the order row if inserted, or null if the row already existed.
+ * Create an order before redirecting to Stripe (order-first flow).
+ * Order is stored with form data and status 'pending_payment'.
+ * Webhook fills in session id, email, amount and sets status to 'pending'.
  */
-export async function upsertOrder(params: {
+export async function insertOrder(params: {
+  userInput: Record<string, unknown>;
+  priceTier?: "standard" | "premium";
+}): Promise<OrderRow> {
+  const db = createServerClient();
+  const row: Record<string, unknown> = {
+    user_input: params.userInput,
+    status: "pending_payment",
+    currency: "usd",
+  };
+  if (params.priceTier !== undefined) {
+    row.price_tier = params.priceTier;
+  }
+  const { data, error } = await db
+    .from("orders")
+    .insert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as unknown as OrderRow;
+}
+
+/**
+ * Update an order after successful Stripe checkout (webhook).
+ * Only updates rows with status 'pending_payment' so duplicate webhooks
+ * don't overwrite or trigger Inngest twice.
+ * Returns the updated order, or null if order was already processed.
+ */
+export async function updateOrderAfterPayment(params: {
+  orderId: string;
   stripeCheckoutSessionId: string;
   stripeCustomerEmail: string;
   amountCents: number;
   currency: string;
-  userInput: Record<string, unknown>;
+  priceTier?: "standard" | "premium";
 }): Promise<OrderRow | null> {
   const db = createServerClient();
-
+  const update: Record<string, unknown> = {
+    stripe_checkout_session_id: params.stripeCheckoutSessionId,
+    stripe_customer_email: params.stripeCustomerEmail,
+    amount_cents: params.amountCents,
+    currency: params.currency,
+    status: "pending",
+  };
+  if (params.priceTier !== undefined) {
+    update.price_tier = params.priceTier;
+  }
   const { data, error } = await db
     .from("orders")
-    .upsert(
-      {
-        stripe_checkout_session_id: params.stripeCheckoutSessionId,
-        stripe_customer_email: params.stripeCustomerEmail,
-        amount_cents: params.amountCents,
-        currency: params.currency,
-        user_input: params.userInput,
-        status: "pending",
-      },
-      { onConflict: "stripe_checkout_session_id", ignoreDuplicates: true },
-    )
+    .update(update)
+    .eq("id", params.orderId)
+    .eq("status", "pending_payment")
     .select()
-    .single();
-
-  if (error && error.code === "PGRST116") {
-    // No rows returned -- duplicate, row already existed
-    return null;
-  }
-
+    .maybeSingle();
   if (error) throw error;
-  return data as unknown as OrderRow;
+  return (data as unknown as OrderRow) ?? null;
 }
 
 export async function getOrder(orderId: string): Promise<OrderRow> {

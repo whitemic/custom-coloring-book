@@ -1,8 +1,15 @@
 import { notFound, redirect } from "next/navigation";
 import { createAuthClient } from "@/lib/supabase/auth-server";
-import type { OrderStatus } from "@/types/database";
+import { getOrderBySessionId, getPagesByOrderId } from "@/lib/supabase/queries";
+import type { OrderStatus, OrderRow, PageRow } from "@/types/database";
+import { OrderDetailRefresh } from "./OrderDetailRefresh";
+import { PendingOrderView } from "./PendingOrderView";
 
 const STATUS_LABELS: Record<OrderStatus, { label: string; description: string }> = {
+  pending_payment: {
+    label: "Awaiting payment",
+    description: "Complete checkout to start your coloring book.",
+  },
   pending: {
     label: "Setting things up",
     description: "Your order has been received and we're preparing to generate your coloring book.",
@@ -27,41 +34,64 @@ const STATUS_LABELS: Record<OrderStatus, { label: string; description: string }>
 
 export default async function OrderDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ session_id?: string }>;
 }) {
   const { id } = await params;
+  const { session_id: sessionId } = await searchParams;
+
+  // Post-checkout: show order-detail-style pending view and poll for order
+  if (id === "pending" && sessionId) {
+    return <PendingOrderView sessionId={sessionId} />;
+  }
+  if (id === "pending") {
+    redirect("/orders");
+  }
 
   const supabase = await createAuthClient();
-
-  // Check for authenticated session -- redirect to lookup if not signed in
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) {
+  let order: OrderRow | null = null;
+  let pages: PageRow[] = [];
+
+  if (user) {
+    // Authenticated: use RLS-protected queries
+    const { data: orderData, error: orderError } = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (orderError || !orderData) {
+      notFound();
+    }
+    order = orderData as OrderRow;
+
+    const { data: pagesData } = await supabase
+      .from("pages")
+      .select("*")
+      .eq("order_id", id)
+      .order("page_number", { ascending: true });
+    pages = (pagesData ?? []) as PageRow[];
+  } else if (sessionId) {
+    // Post-checkout: allow access if session_id matches this order
+    const sessionOrder = await getOrderBySessionId(sessionId);
+    if (!sessionOrder || (sessionOrder.id as string) !== id) {
+      redirect("/orders");
+    }
+    order = sessionOrder;
+    pages = await getPagesByOrderId(id);
+  } else {
     redirect("/orders");
   }
 
-  // Fetch order via RLS-protected query (only returns if email matches)
-  const { data: order, error: orderError } = await supabase
-    .from("orders")
-    .select("*")
-    .eq("id", id)
-    .single();
-
-  if (orderError || !order) {
+  if (!order) {
     notFound();
   }
-
-  // Fetch pages via RLS-protected query
-  const { data: pagesData } = await supabase
-    .from("pages")
-    .select("*")
-    .eq("order_id", id)
-    .order("page_number", { ascending: true });
-
-  const pages = pagesData ?? [];
   const completedPages = pages.filter((p) => p.status === "complete");
   const totalPages = pages.length;
   const progress = totalPages > 0 ? Math.round((completedPages.length / totalPages) * 100) : 0;
@@ -78,6 +108,7 @@ export default async function OrderDetailPage({
 
   return (
     <div className="flex min-h-screen flex-col items-center bg-white px-6 py-16 dark:bg-zinc-950">
+      <OrderDetailRefresh isProcessing={isProcessing} />
       <main className="mx-auto w-full max-w-3xl">
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -119,13 +150,13 @@ export default async function OrderDetailPage({
           <div>
             <dt className="text-zinc-500 dark:text-zinc-500">Amount</dt>
             <dd className="mt-1 text-zinc-900 dark:text-zinc-100">
-              ${((order.amount_cents as number) / 100).toFixed(2)}
+              ${((order.amount_cents ?? 0) / 100).toFixed(2)}
             </dd>
           </div>
           <div>
             <dt className="text-zinc-500 dark:text-zinc-500">Email</dt>
             <dd className="mt-1 truncate text-zinc-900 dark:text-zinc-100">
-              {order.stripe_customer_email as string}
+              {order.stripe_customer_email ?? "—"}
             </dd>
           </div>
         </dl>
@@ -201,11 +232,11 @@ export default async function OrderDetailPage({
           </a>
         )}
 
-        {/* Auto-refresh hint for in-progress orders */}
+        {/* Hint for in-progress orders (page auto-updates every 15s) */}
         {isProcessing && (
           <p className="mt-6 text-center text-sm text-zinc-500 dark:text-zinc-500">
-            This page does not update automatically. Refresh to check for
-            progress.
+            Generation can take a few minutes. This page updates automatically
+            every 15 seconds.
           </p>
         )}
 
