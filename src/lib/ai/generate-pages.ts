@@ -43,6 +43,8 @@ const SCENE_SYSTEM_PROMPT = `You are a children's coloring book story designer. 
 
 CRITICAL RULE: Each scene must feature THE EXACT SAME CHARACTER. Maintain character type/species consistency across all scenes. If the character is a frog, every scene must feature the same frog. If the character is a human child, every scene must feature the same human child.
 
+DISTINCT LOCATIONS (CRITICAL): Each of the scenes must be in a clearly DIFFERENT place or setting within the theme — not the same scene repeated. Vary location and focal point: e.g. outside vs inside, different rooms or areas, different vantage points. Example for a fairytale-kingdom theme: (1) a view from outside the kingdom where you can see a castle in the distance, (2) inside the castle in a grand ballroom, (3) the character sitting on a throne. Generate this level of variety for the user's theme: distinctly different locations/settings so each scene is clearly different.
+
 RULES:
 1. Each scene must feature THE SAME main character (maintain species/type consistency) in a distinct setting or activity related to the theme.
 2. Scenes should tell a loose narrative arc: introduction, adventure, resolution.
