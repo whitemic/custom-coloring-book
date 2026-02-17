@@ -126,7 +126,8 @@ export async function sendVerificationCode(
 
 /**
  * Verify a 6-digit OTP code. On success, creates a session and returns
- * the user's orders.
+ * the user's orders. If orderIdHint is provided and matches an order
+ * for this email, returns redirectOrderId so the client can redirect to that order.
  *
  * Rate-limited via Upstash (5 attempts per 15min per email) on top of
  * Supabase Auth's built-in limits.
@@ -134,11 +135,14 @@ export async function sendVerificationCode(
 export async function verifyCodeAndLookup(
   email: string,
   code: string,
+  orderIdHint?: string | null,
 ): Promise<{
   orders: OrderSummary[];
   error: string | null;
+  redirectOrderId?: string;
 }> {
   const trimmed = email.trim().toLowerCase();
+  const hint = orderIdHint?.trim().toLowerCase();
 
   if (!trimmed || !code) {
     return { orders: [], error: "Please enter your email and code." };
@@ -185,7 +189,15 @@ export async function verifyCodeAndLookup(
       currency: r.currency as string,
     }));
 
-    return { orders, error: null };
+    let redirectOrderId: string | undefined;
+    if (hint && orders.length > 0) {
+      const match = orders.find(
+        (o) => o.id === hint || o.id.toLowerCase().startsWith(hint),
+      );
+      if (match) redirectOrderId = match.id;
+    }
+
+    return { orders, error: null, redirectOrderId };
   } catch {
     return { orders: [], error: "Something went wrong. Please try again." };
   }
