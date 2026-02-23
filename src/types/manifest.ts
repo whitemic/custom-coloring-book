@@ -39,6 +39,11 @@ export const CharacterManifestSchema = z.object({
   characterKeyFeatures: z
     .array(z.string())
     .describe("Distinct visual features that must appear consistently across all pages (e.g. 'top hat', 'groovy pattern', 'large eyes', 'striped shirt')"),
+  characterProps: z
+    .array(z.string())
+    .describe(
+      "Props or items the character carries, holds, or is associated with (e.g. 'magnifying glass', 'red balloon', 'teddy bear', 'wizard wand'). These appear with the character on every page for consistency. Use an empty array [] if none are mentioned.",
+    ),
   theme: z
     .string()
     .describe(

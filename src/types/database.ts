@@ -27,6 +27,12 @@ export interface OrderRow {
   currency: string;
   user_input: Record<string, unknown>;
   pdf_url: string | null;
+  /** Preview image URL from pre-purchase Flux generation (for img2img pipeline). */
+  preview_image_url: string | null;
+  /** Seed used for preview generation (for img2img pipeline). */
+  preview_seed: number | null;
+  /** Multiple preview options before user picks one. [{ imageUrl, seed }, ...] */
+  previews?: { imageUrl: string; seed: number }[] | null;
   created_at: string;
   updated_at: string;
   /** Set at checkout or from Stripe; used for model selection. */
@@ -41,6 +47,7 @@ export interface CharacterManifestRow {
   species: string | null;
   physical_description: string | null;
   character_key_features: string[];
+  character_props: string[] | null;
   age_range: string | null;
   hair: {
     style: string;
