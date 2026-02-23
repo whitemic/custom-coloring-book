@@ -1,24 +1,23 @@
 /**
- * Shape of the metadata we attach to the Stripe Checkout Session.
- * This is set when creating the session on the frontend/landing page
- * and read back in the webhook handler.
+ * Shape of the metadata we attach to the Stripe Checkout Session (order-first flow).
+ * We only pass order_id and optional price_tier; form data is stored on the order in the DB.
  */
 export interface CheckoutSessionMetadata {
-  /** Freeform character description from the user */
-  user_input: string;
-  /** Optional: character name provided during checkout */
-  character_name?: string;
-  /** Optional: theme preference selected at checkout */
-  theme?: string;
+  /** Order UUID created before redirect; webhook uses this to update the order */
+  order_id: string;
+  /** Optional: "standard" | "premium" for model selection (upsell) */
+  price_tier?: string;
 }
 
 /**
  * Parsed payload we extract from a `checkout.session.completed` event.
  */
 export interface StripeCheckoutPayload {
+  orderId: string;
   sessionId: string;
   customerEmail: string;
   amountCents: number;
   currency: string;
-  metadata: CheckoutSessionMetadata;
+  /** For model selection: "standard" | "premium" (from metadata or derived from amount) */
+  priceTier: "standard" | "premium";
 }

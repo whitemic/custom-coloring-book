@@ -14,9 +14,17 @@ import {
   getPagesByOrderId,
   updatePageImage,
 } from "@/lib/supabase/queries";
+import { getPriceTierFromOrder } from "@/lib/ai/config";
 import { generateCharacterManifest } from "@/lib/ai/generate-manifest";
-import { generateSceneDescriptions } from "@/lib/ai/generate-pages";
-import { generateSeed, composePagePrompt } from "@/lib/ai/generate-pages";
+import {
+  generateSceneDescriptions,
+  generateSeed,
+  composePagePrompt,
+} from "@/lib/ai/generate-pages";
+import {
+  generateGlobalThemeContext,
+  generatePageContextsBatch,
+} from "@/lib/ai/generate-context";
 import { runReplicatePrediction } from "@/lib/ai/client";
 import { assemblePdf } from "@/lib/utils/pdf";
 import type { CharacterManifest } from "@/types/manifest";
@@ -56,15 +64,30 @@ export const generateBook = inngest.createFunction(
         return;
       }
 
-      const userInputText =
-        typeof order.user_input === "string"
-          ? order.user_input
-          : (order.user_input as Record<string, unknown>).user_input as string;
+      const raw = order.user_input;
+      const description =
+        typeof raw === "string"
+          ? raw
+          : (raw as Record<string, unknown>).user_input as string | undefined;
+      const themeFromForm =
+        typeof raw === "object" && raw !== null
+          ? (raw as Record<string, unknown>).theme as string | undefined
+          : undefined;
+      const userInputForManifest =
+        description?.trim() ?? "";
+      const themeHint =
+        themeFromForm?.trim();
+
+      const priceTier = getPriceTierFromOrder(order);
 
       let manifestRow = await getManifestByOrderId(orderId);
 
       if (!manifestRow) {
-        const manifest = await generateCharacterManifest(userInputText);
+        const manifest = await generateCharacterManifest(
+          userInputForManifest,
+          priceTier,
+          themeHint,
+        );
         manifestRow = await insertManifest(
           orderId,
           manifest,
@@ -72,27 +95,52 @@ export const generateBook = inngest.createFunction(
         );
       }
 
+      // Build manifest with backward compatibility for existing rows
       const manifest: CharacterManifest = {
         characterName: manifestRow.character_name,
-        ageRange: manifestRow.age_range,
-        hair: manifestRow.hair as CharacterManifest["hair"],
-        skinTone: manifestRow.skin_tone,
-        outfit: manifestRow.outfit,
+        characterType:
+          (manifestRow.character_type as CharacterManifest["characterType"]) ||
+          "human", // Default to human for backward compatibility
+        species: manifestRow.species ?? null,
+        physicalDescription: manifestRow.physical_description ?? null,
+        characterKeyFeatures: manifestRow.character_key_features ?? [],
+        ageRange: manifestRow.age_range ?? null,
+        hair: manifestRow.hair
+          ? (manifestRow.hair as CharacterManifest["hair"])
+          : null,
+        skinTone: manifestRow.skin_tone ?? null,
+        outfit: manifestRow.outfit
+          ? (manifestRow.outfit as CharacterManifest["outfit"])
+          : null,
         theme: manifestRow.theme,
         styleTags: manifestRow.style_tags,
         negativeTags: manifestRow.negative_tags,
       };
 
-      const scenes = await generateSceneDescriptions(manifest);
+      const scenes = await generateSceneDescriptions(manifest, priceTier);
+
+      const globalContext = await generateGlobalThemeContext(manifest, priceTier);
+      const pageContexts = await generatePageContextsBatch(
+        manifest,
+        scenes,
+        globalContext,
+        priceTier,
+      );
 
       const pageInserts = scenes.map((scene, idx) => {
         const pageNumber = idx + 1;
         const seed = generateSeed(orderId, pageNumber);
+        const pageContext = pageContexts[idx];
+        if (!pageContext) {
+          throw new Error(
+            `Missing page context for scene ${pageNumber}; batch size mismatch.`,
+          );
+        }
         return {
           pageNumber,
           seed,
           sceneDescription: scene,
-          fullPrompt: composePagePrompt(manifest, scene, seed),
+          fullPrompt: composePagePrompt(manifest, scene, seed, pageContext),
         };
       });
 

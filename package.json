@@ -7,7 +7,7 @@
     "dev:inngest": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest",
     "dev:stripe": "stripe listen --forward-to localhost:3000/api/webhook/stripe",
     "dev:supabase": "npx supabase start",
-    "dev:all": "concurrently \"npm run dev\" \"npm run dev:inngest\" \"npm run dev:stripe\"",
+    "dev:all": "concurrently -n supabase,next,inngest,stripe \"npm run dev:supabase\" \"npm run dev\" \"npm run dev:inngest\" \"npm run dev:stripe\"",
     "db:reset": "npx supabase db reset",
     "build": "next build",
     "start": "next start",

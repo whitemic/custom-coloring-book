@@ -67,6 +67,19 @@ A high-margin, 100% automated digital product engine. This system transforms par
 
 ---
 
+## 🖥 Local development
+
+**Option A — Run everything locally (recommended for full flow):**  
+Supabase, Stripe webhooks, and Inngest all run on your machine. No staging deployment needed. For testing without payment, create a 100% off coupon in Stripe and add a promotion code; testers enter the code at checkout.
+
+→ **[docs/LOCAL_FULL_STACK.md](docs/LOCAL_FULL_STACK.md)** for step-by-step setup (Docker, Stripe CLI, env, then `npm run dev:supabase`, `npm run dev:stripe`, `npm run dev`, `npm run dev:inngest`).
+
+**Option B — Local app + staging webhook:**  
+   Copy `.env.local.dev` to `.env.local`, run `npm run dev`. Stripe sends webhooks to your staging URL; that deployment must have the correct `STRIPE_WEBHOOK_SECRET` and dev Supabase. See `docs/OPTION_A_SETUP.md` if you use this.
+
+
+---
+
 ## 🚀 Strategic Roadmap
 
 * **Phase 1**: Manual "Prompt-to-PDF" testing (Zero-to-One).

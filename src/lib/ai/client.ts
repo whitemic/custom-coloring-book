@@ -22,7 +22,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Run a single Flux.1 prediction on Replicate with automatic retry
+ * Run a single Flux Dev prediction on Replicate with automatic retry
  * on 429 rate-limit errors. Waits for the Retry-After header value
  * (or 10s default) before retrying, up to 3 attempts.
  */
@@ -35,7 +35,7 @@ export async function runReplicatePrediction(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const output = await replicate.run("black-forest-labs/flux-schnell", {
+      const output = await replicate.run("black-forest-labs/flux-dev", {
         input: {
           prompt,
           seed,
@@ -43,6 +43,8 @@ export async function runReplicatePrediction(
           aspect_ratio: "1:1",
           output_format: "png",
           output_quality: 100,
+          guidance: 3.5,
+          num_inference_steps: 28,
         },
       });
 

@@ -6,7 +6,6 @@ import {
   getSessionOrders,
   sendVerificationCode,
   verifyCodeAndLookup,
-  resolveSessionToOrder,
 } from "./actions";
 import type { OrderSummary } from "./actions";
 
@@ -15,6 +14,7 @@ import type { OrderSummary } from "./actions";
 // ---------------------------------------------------------------------------
 
 const STATUS_DISPLAY: Record<string, string> = {
+  pending_payment: "Awaiting payment",
   pending: "Processing",
   manifest_generated: "Designing",
   generating: "Generating",
@@ -23,61 +23,20 @@ const STATUS_DISPLAY: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Post-checkout session redirect (unchanged)
+// Post-checkout: send to order detail (pending) so there's no separate loading page
 // ---------------------------------------------------------------------------
 
 function SessionRedirect() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const sessionId = searchParams.get("session_id");
-  const [retries, setRetries] = useState(0);
-  const [waiting, setWaiting] = useState(!!sessionId);
 
   useEffect(() => {
     if (!sessionId) return;
-
-    let cancelled = false;
-
-    async function resolve() {
-      const orderId = await resolveSessionToOrder(sessionId!);
-      if (cancelled) return;
-
-      if (orderId) {
-        router.replace(`/orders/${orderId}`);
-      } else if (retries < 10) {
-        setTimeout(() => {
-          if (!cancelled) setRetries((r) => r + 1);
-        }, 2000);
-      } else {
-        setWaiting(false);
-      }
-    }
-
-    resolve();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, retries, router]);
+    router.replace(`/orders/pending?session_id=${encodeURIComponent(sessionId)}`);
+  }, [sessionId, router]);
 
   if (!sessionId) return null;
-
-  if (waiting) {
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center bg-white px-6 dark:bg-zinc-950">
-        <div className="mx-auto max-w-md text-center">
-          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
-          <h1 className="mt-6 text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-            Locating your order&hellip;
-          </h1>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-            Your payment was successful! We&apos;re setting up your coloring
-            book now. This usually takes just a few seconds.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return null;
 }
 
@@ -94,20 +53,17 @@ function OrderLookup() {
 
   const [step, setStep] = useState<Step>("loading");
   const [email, setEmail] = useState("");
+  const [orderIdHint, setOrderIdHint] = useState("");
   const [code, setCode] = useState("");
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionEmail, setSessionEmail] = useState<string | null>(null);
+  const router = useRouter();
 
-  // On mount, check for an existing session
+  // On mount, check for an existing session (session_id is handled by redirect to /orders/pending)
   useEffect(() => {
-    if (sessionId) {
-      // Let the SessionRedirect component handle this
-      setStep("loading");
-      const timer = setTimeout(() => setStep("email"), 22000);
-      return () => clearTimeout(timer);
-    }
+    if (sessionId) return;
 
     async function checkSession() {
       const result = await getSessionOrders();
@@ -161,19 +117,21 @@ function OrderLookup() {
       setError(null);
       setLoading(true);
 
-      const result = await verifyCodeAndLookup(email, code);
+      const result = await verifyCodeAndLookup(email, code, orderIdHint || undefined);
 
       setLoading(false);
 
       if (result.error) {
         setError(result.error);
+      } else if (result.redirectOrderId) {
+        router.push(`/orders/${result.redirectOrderId}`);
       } else {
         setOrders(result.orders);
         setSessionEmail(email);
         setStep("results");
       }
     },
-    [email, code],
+    [email, code, orderIdHint, router],
   );
 
   const handleResendCode = useCallback(async () => {
@@ -212,7 +170,7 @@ function OrderLookup() {
               verification code to confirm it&apos;s you.
             </p>
 
-            <form onSubmit={handleSendCode} className="mt-8">
+            <form onSubmit={handleSendCode} className="mt-8 space-y-4">
               <div className="flex gap-3">
                 <input
                   type="email"
@@ -229,6 +187,19 @@ function OrderLookup() {
                 >
                   {loading ? "Sending..." : "Send code"}
                 </button>
+              </div>
+              <div>
+                <label htmlFor="orderIdHint" className="block text-left text-sm text-zinc-500 dark:text-zinc-400">
+                  Optional: Order ID
+                </label>
+                <input
+                  id="orderIdHint"
+                  type="text"
+                  value={orderIdHint}
+                  onChange={(e) => setOrderIdHint(e.target.value)}
+                  placeholder="e.g. a1b2c3d4"
+                  className="mt-1 block w-full rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm text-zinc-900 shadow-sm placeholder:text-zinc-400 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                />
               </div>
             </form>
 
