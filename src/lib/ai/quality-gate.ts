@@ -163,6 +163,7 @@ export async function checkPageQuality(
       lineArtScore: 4,
       backgroundScore: 3,
       anatomyScore: 3,
+      handScore: 3,
       compositionScore: 3,
       pass: true,
       feedback: "",
