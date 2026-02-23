@@ -47,6 +47,7 @@ export interface CharacterManifestRow {
   species: string | null;
   physical_description: string | null;
   character_key_features: string[];
+  character_props: string[] | null;
   age_range: string | null;
   hair: {
     style: string;

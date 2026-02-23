@@ -5,6 +5,7 @@ import { getStripe } from "@/lib/stripe/client";
 import { insertOrder, getOrder, updateOrderPreview, updateOrderPreviews, selectOrderPreview } from "@/lib/supabase/queries";
 import { runReplicatePrediction } from "@/lib/ai/client";
 import { composePreviewPrompt } from "@/lib/ai/generate-pages";
+import { persistImageToStorage } from "@/lib/utils/images";
 
 function getBaseUrl() {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
@@ -51,7 +52,9 @@ export async function generatePreview(formData: FormData): Promise<{
 
   for (let i = 0; i < 3; i++) {
     const seed = Math.floor(Math.random() * 0x7fffffff);
-    const { imageUrl } = await runReplicatePrediction(prompt, seed);
+    const { imageUrl: replicateUrl } = await runReplicatePrediction(prompt, seed);
+    // Persist immediately to Supabase Storage — Replicate CDN URLs expire in ~24h.
+    const imageUrl = await persistImageToStorage(replicateUrl, order.id, `preview-${i}`);
     previews.push({ imageUrl, seed });
   }
 

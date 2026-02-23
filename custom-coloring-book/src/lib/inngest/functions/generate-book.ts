@@ -19,15 +19,19 @@ import { generateCharacterManifest } from "@/lib/ai/generate-manifest";
 import {
   generateSceneDescriptions,
   generateSeed,
-  composePagePrompt,
+  composeKontextPagePrompt,
+  refinePromptFromFeedback,
 } from "@/lib/ai/generate-pages";
 import {
   generateGlobalThemeContext,
   generatePageContextsBatch,
 } from "@/lib/ai/generate-context";
-import { runReplicatePrediction, runReplicatePredictionImg2Img } from "@/lib/ai/client";
+import { runReplicateKontextPro } from "@/lib/ai/client";
+import { checkPageQuality, type QualityResult } from "@/lib/ai/quality-gate";
 import { assemblePdf } from "@/lib/utils/pdf";
 import type { CharacterManifest } from "@/types/manifest";
+
+const MAX_QUALITY_RETRIES = 2;
 
 /**
  * Durable two-step Inngest function triggered by "order/created".
@@ -37,11 +41,16 @@ import type { CharacterManifest } from "@/types/manifest";
  * Step 1 -- Generate Manifest:
  *   Checks if a manifest already exists (from a previous partial run).
  *   If not, generates one via LLM. Then checks if pages exist; if not,
- *   generates scene descriptions and inserts 20 page rows.
+ *   generates scene descriptions and inserts page rows.
  *
  * Step 2 -- Generate Images:
  *   Queries only pages with status "pending", so already-completed
- *   pages from a prior partial run are skipped. Processes in batches of 5.
+ *   pages from a prior partial run are skipped.
+ *   Each page runs through a Critic-Refiner-Evaluator loop:
+ *   - Kontext generates the image
+ *   - Quality gate (GPT-4o, Analyze-then-Judge) evaluates it
+ *   - On failure, feedback is used to refine the prompt before retry
+ *   No Canny pass — Kontext output is the final customer-facing image.
  */
 export const generateBook = inngest.createFunction(
   {
@@ -55,6 +64,12 @@ export const generateBook = inngest.createFunction(
     // ----- Step 1: Generate Character Manifest (idempotent) -----
     await step.run("generate-manifest", async () => {
       const order = await getOrder(orderId);
+
+      if (!order.preview_image_url) {
+        throw new Error(
+          "Preview image (seed URL) is required for book generation. The customer must select a character preview before checkout.",
+        );
+      }
 
       if (
         order.status === "manifest_generated" ||
@@ -73,10 +88,8 @@ export const generateBook = inngest.createFunction(
         typeof raw === "object" && raw !== null
           ? (raw as Record<string, unknown>).theme as string | undefined
           : undefined;
-      const userInputForManifest =
-        description?.trim() ?? "";
-      const themeHint =
-        themeFromForm?.trim();
+      const userInputForManifest = description?.trim() ?? "";
+      const themeHint = themeFromForm?.trim();
 
       const priceTier = getPriceTierFromOrder(order);
 
@@ -95,15 +108,15 @@ export const generateBook = inngest.createFunction(
         );
       }
 
-      // Build manifest with backward compatibility for existing rows
       const manifest: CharacterManifest = {
         characterName: manifestRow.character_name,
         characterType:
           (manifestRow.character_type as CharacterManifest["characterType"]) ||
-          "human", // Default to human for backward compatibility
+          "human",
         species: manifestRow.species ?? null,
         physicalDescription: manifestRow.physical_description ?? null,
         characterKeyFeatures: manifestRow.character_key_features ?? [],
+        characterProps: manifestRow.character_props ?? [],
         ageRange: manifestRow.age_range ?? null,
         hair: manifestRow.hair
           ? (manifestRow.hair as CharacterManifest["hair"])
@@ -140,7 +153,11 @@ export const generateBook = inngest.createFunction(
           pageNumber,
           seed,
           sceneDescription: scene,
-          fullPrompt: composePagePrompt(manifest, scene, seed, pageContext),
+          fullPrompt: composeKontextPagePrompt(
+            manifest,
+            scene,
+            pageContext,
+          ),
         };
       });
 
@@ -148,10 +165,7 @@ export const generateBook = inngest.createFunction(
       await updateOrderStatus(orderId, "manifest_generated");
     });
 
-    // ----- Step 2: Generate each page image as its own step -----
-    // Each page is a separate Inngest step, so completed pages are
-    // checkpointed and won't be re-run on retry. This also gives
-    // each page its own retry budget via Inngest.
+    // ----- Step 2: Generate each page image -----
     await step.run("set-generating", async () => {
       await updateOrderStatus(orderId, "generating");
     });
@@ -160,35 +174,131 @@ export const generateBook = inngest.createFunction(
       return await getPendingPages(orderId);
     });
 
-    const orderForPreview = await step.run("get-order-for-preview", async () => {
+    const orderContext = await step.run("get-order-context", async () => {
       const o = await getOrder(orderId);
+      const manifestRow = await getManifestByOrderId(orderId);
+      if (!manifestRow) throw new Error("Manifest not found for order");
+
       return {
+        // Store just the URL here — the actual image bytes are fetched inside
+        // each generate-page step to avoid serializing large base64 data through
+        // Inngest's step output store (which has size constraints).
         previewImageUrl: o.preview_image_url ?? null,
-        previewSeed: o.preview_seed ?? null,
       };
     });
 
-    const useImg2Img =
-      orderForPreview.previewImageUrl != null &&
-      orderForPreview.previewSeed != null;
+    if (!orderContext.previewImageUrl) {
+      throw new Error(
+        "Preview image (seed URL) is required for book generation. The customer must select a character preview before checkout.",
+      );
+    }
+
+    const { previewImageUrl } = orderContext;
+
+    /**
+     * Fetch the reference image and return it as a base64 data URI.
+     * This runs inside each page step so the large binary data is never
+     * stored in Inngest's step-output serialization.
+     *
+     * Using a data URI instead of passing the raw URL means:
+     *   1. Replicate CDN URLs (replicate.delivery) that expire after ~24h work fine.
+     *   2. Local-dev Supabase Storage URLs (127.0.0.1) are reachable from the
+     *      Inngest worker (same machine) even though Replicate's servers can't
+     *      reach them — the binary is embedded directly in the API request.
+     */
+    async function fetchReferenceAsDataUri(url: string): Promise<string> {
+      const imgResponse = await fetch(url);
+      if (!imgResponse.ok) {
+        throw new Error(
+          `Reference image not accessible (${imgResponse.status}): ${url}. ` +
+          `Re-run the fix-expired-preview script to regenerate it.`,
+        );
+      }
+      const imgBuffer = await imgResponse.arrayBuffer();
+      const base64 = Buffer.from(imgBuffer).toString("base64");
+      const contentType = imgResponse.headers.get("content-type") ?? "image/png";
+      return `data:${contentType};base64,${base64}`;
+    }
 
     for (const page of pages) {
       await step.run(`generate-page-${page.page_number}`, async () => {
-        const result = useImg2Img
-          ? await runReplicatePredictionImg2Img(
-              page.full_prompt,
-              (orderForPreview.previewSeed as number) + page.page_number,
-              orderForPreview.previewImageUrl as string,
-              0.88,
-              6,
-            )
-          : await runReplicatePrediction(page.full_prompt, page.seed, 6);
-        await updatePageImage(page.id, result.imageUrl, result.predictionId);
+        // --- Critic-Refiner-Evaluator loop ---
+        // Pass 1: generate with Kontext (character consistency via reference image)
+        // Quality gate evaluates with Analyze-then-Judge rubric (GPT-4o)
+        // On failure: critic feedback refines the prompt; retry with new seed
+        // Kontext output is the final image — no Canny pass
+
+        // Fetch reference image as a base64 data URI inside the step so the
+        // large binary doesn't flow through Inngest's step-output serialization.
+        const referenceDataUri = await fetchReferenceAsDataUri(previewImageUrl);
+
+        let currentPrompt = page.full_prompt;
+        let currentSeed = page.seed;
+        let finalImageUrl: string | null = null;
+        let finalPredictionId = "";
+        let lastQuality: QualityResult | null = null;
+
+        for (let attempt = 0; attempt <= MAX_QUALITY_RETRIES; attempt++) {
+          const result = await runReplicateKontextPro(
+            currentPrompt,
+            currentSeed,
+            referenceDataUri,
+            6,
+          );
+          finalImageUrl = result.imageUrl;
+          finalPredictionId = result.predictionId;
+
+          const quality = await checkPageQuality(result.imageUrl);
+          lastQuality = quality;
+
+          if (quality.pass) {
+            console.log(
+              `Page ${page.page_number} passed quality gate (attempt ${attempt + 1})`,
+            );
+            break;
+          }
+
+          console.warn(
+            `Page ${page.page_number} failed quality gate (attempt ${attempt + 1}/${MAX_QUALITY_RETRIES + 1}): ${quality.feedback}`,
+          );
+
+          if (attempt < MAX_QUALITY_RETRIES) {
+            // Advance seed and refine the prompt using critic feedback
+            currentSeed = (currentSeed + 7919) & 0x7fffffff;
+            currentPrompt = await refinePromptFromFeedback(
+              currentPrompt,
+              quality.feedback,
+            );
+            console.log(
+              `Page ${page.page_number}: prompt refined for retry ${attempt + 2}`,
+            );
+          }
+          // After final retry, proceed with best-effort image (checked below)
+        }
+
+        // Safety check: never allow a clearly colored image into a coloring book PDF.
+        // lineArtScore <= 2 means visible color fills — this is a hard failure.
+        if (lastQuality && lastQuality.lineArtScore <= 2) {
+          throw new Error(
+            `Page ${page.page_number} produced colored output after all retries ` +
+            `(lineArtScore=${lastQuality.lineArtScore}/5). ` +
+            `Refusing to include a colored image in the coloring book. ` +
+            `Feedback: ${lastQuality.feedback}`,
+          );
+        }
+
+        console.log(
+          `Page ${page.page_number} complete: predictionId=${finalPredictionId}`,
+        );
+        await updatePageImage(
+          page.id,
+          finalImageUrl!,
+          finalPredictionId,
+        );
       });
 
-      // Sleep between pages to avoid rate limits
       if (page !== pages[pages.length - 1]) {
-        await step.sleep(`wait-after-page-${page.page_number}`, "15s");
+        await step.sleep(`wait-after-page-${page.page_number}`, "5s");
       }
     }
 
