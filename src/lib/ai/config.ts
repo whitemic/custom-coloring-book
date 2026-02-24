@@ -11,9 +11,9 @@ export const AI_MODEL_COMPLEX = process.env.AI_MODEL_COMPLEX ?? "gpt-4o";
 export const AI_PROVIDER_FALLBACK =
   process.env.AI_PROVIDER_FALLBACK ?? "openai,anthropic";
 
-/** Minimum amount_cents for Premium tier when using amount-based tier (Option B). e.g. 1499 = $14.99 */
+/** Minimum amount_cents for Premium tier when using amount-based tier (Option B). 2500 = $25 */
 export const PREMIUM_PRICE_CENTS = Number(
-  process.env.PREMIUM_PRICE_CENTS ?? "1499",
+  process.env.PREMIUM_PRICE_CENTS ?? "2500",
 );
 
 export function getProviderFallbackList(): string[] {

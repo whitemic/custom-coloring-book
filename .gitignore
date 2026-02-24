@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local-only scripts (may contain secrets, not for commit)
+scripts/*.mjs

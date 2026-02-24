@@ -20,6 +20,8 @@ import type { CharacterManifest } from "@/types/manifest";
 export async function insertOrder(params: {
   userInput: Record<string, unknown>;
   priceTier?: "standard" | "premium";
+  previewImageUrl?: string | null;
+  previewSeed?: number | null;
 }): Promise<OrderRow> {
   const db = createServerClient();
   const row: Record<string, unknown> = {
@@ -30,6 +32,12 @@ export async function insertOrder(params: {
   if (params.priceTier !== undefined) {
     row.price_tier = params.priceTier;
   }
+  if (params.previewImageUrl !== undefined) {
+    row.preview_image_url = params.previewImageUrl;
+  }
+  if (params.previewSeed !== undefined) {
+    row.preview_seed = params.previewSeed;
+  }
   const { data, error } = await db
     .from("orders")
     .insert(row)
@@ -37,6 +45,71 @@ export async function insertOrder(params: {
     .single();
   if (error) throw error;
   return data as unknown as OrderRow;
+}
+
+/**
+ * Update an order's preview image and seed (after pre-purchase Flux generation).
+ */
+export async function updateOrderPreview(
+  orderId: string,
+  previewImageUrl: string,
+  previewSeed: number,
+): Promise<void> {
+  const db = createServerClient();
+  const { error } = await db
+    .from("orders")
+    .update({
+      preview_image_url: previewImageUrl,
+      preview_seed: previewSeed,
+    })
+    .eq("id", orderId)
+    .eq("status", "pending_payment");
+  if (error) throw error;
+}
+
+/**
+ * Store multiple preview options on an order (before user picks one).
+ */
+export async function updateOrderPreviews(
+  orderId: string,
+  previews: { imageUrl: string; seed: number }[],
+): Promise<void> {
+  const db = createServerClient();
+  const { error } = await db
+    .from("orders")
+    .update({ previews })
+    .eq("id", orderId)
+    .eq("status", "pending_payment");
+  if (error) throw error;
+}
+
+/**
+ * Set the chosen preview (from previews[index]) as the order's preview_image_url and preview_seed.
+ */
+export async function selectOrderPreview(
+  orderId: string,
+  index: number,
+): Promise<void> {
+  const db = createServerClient();
+  const { data: order, error: fetchError } = await db
+    .from("orders")
+    .select("previews")
+    .eq("id", orderId)
+    .eq("status", "pending_payment")
+    .single();
+  if (fetchError || !order) throw new Error("Order not found or already paid");
+  const previews = order.previews as { imageUrl: string; seed: number }[] | null;
+  if (!previews?.[index]) throw new Error("Invalid preview selection");
+  const chosen = previews[index];
+  const { error } = await db
+    .from("orders")
+    .update({
+      preview_image_url: chosen.imageUrl,
+      preview_seed: chosen.seed,
+    })
+    .eq("id", orderId)
+    .eq("status", "pending_payment");
+  if (error) throw error;
 }
 
 /**

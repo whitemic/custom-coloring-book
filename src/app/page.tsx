@@ -1,6 +1,14 @@
 import { CheckoutForm } from "@/components/checkout-form";
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ canceled?: string; order_id?: string }>;
+}) {
+  const params = await searchParams;
+  const initialCanceledOrderId =
+    params.canceled === "1" && params.order_id ? params.order_id : null;
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-white px-6 py-16 dark:bg-zinc-950">
       <main className="mx-auto max-w-2xl text-center">
@@ -17,7 +25,7 @@ export default function Home() {
           main character &mdash; delivered to your inbox in minutes.
         </p>
 
-        <CheckoutForm />
+        <CheckoutForm initialCanceledOrderId={initialCanceledOrderId} />
 
         <p className="mt-16 text-xs text-zinc-400 dark:text-zinc-600">
           Powered by Flux.1 &middot; Delivered as a printable PDF
