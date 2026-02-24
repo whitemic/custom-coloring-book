@@ -204,7 +204,7 @@ export async function verifyCodeAndLookup(
 }
 
 // ---------------------------------------------------------------------------
-// Post-checkout session redirect (unchanged from previous implementation)
+// Post-checkout session redirect
 // ---------------------------------------------------------------------------
 
 /**

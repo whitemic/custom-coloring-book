@@ -20,6 +20,9 @@ export function QuickNav() {
   const isHome = pathname === "/";
   const isOrders = pathname?.startsWith("/orders");
 
+  // Marketing page has its own full-page header — don't double up
+  if (isHome) return null;
+
   const linkBase =
     "flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium transition-colors touch-manipulation";
   const active = "bg-indigo-600 text-white dark:bg-indigo-500";
