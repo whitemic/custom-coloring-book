@@ -462,7 +462,7 @@ export function CheckoutForm({
                 </div>
 
                 {/* Character preview frame */}
-                <div className="relative">
+                <div className="relative mb-4">
                   <div
                     className="border-4 border-dashed border-amber-300 bg-amber-50/30 p-4 min-h-[160px]"
                     style={{ borderRadius: "12px 16px 10px 18px" }}
@@ -545,6 +545,38 @@ export function CheckoutForm({
                     </div>
                   </div>
                 </div>
+
+                {/* Error message */}
+                {previewError && (
+                  <p
+                    className="mb-3 text-sm text-red-600"
+                    style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                  >
+                    {previewError}
+                  </p>
+                )}
+
+                {/* Generate button — right here on the left page */}
+                <button
+                  type="submit"
+                  disabled={previewPending}
+                  className="w-full bg-gradient-to-r from-pink-400 via-amber-400 to-pink-400 hover:from-pink-500 hover:via-amber-500 hover:to-pink-500 text-white font-bold py-3.5 px-6 shadow-md hover:shadow-lg transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    fontFamily: "var(--font-nunito), sans-serif",
+                    fontSize: "1rem",
+                    borderRadius: "10px 14px 10px 16px",
+                  }}
+                >
+                  {previewPending
+                    ? "✨ Generating… (~30s)"
+                    : "✨ Preview My Character"}
+                </button>
+                <p
+                  className="mt-2 text-center text-xs text-gray-400"
+                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                >
+                  from $12 · 20 scenes · printable PDF
+                </p>
               </div>
             </div>
 
@@ -703,66 +735,16 @@ export function CheckoutForm({
           </div>
         </div>
 
-        {/* Submit */}
-        <div className="bg-white sketch-border p-6">
-          {previewError && (
-            <p
-              className="mb-4 text-sm text-red-600"
-              style={{ fontFamily: "var(--font-nunito), sans-serif" }}
-            >
-              {previewError}
-            </p>
-          )}
-
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-6">
-            <p
-              className="text-sm text-gray-500 max-w-xs text-center sm:text-left"
-              style={{ fontFamily: "var(--font-nunito), sans-serif" }}
-            >
-              20 hand-crafted scenes · consistent character · printable PDF
-            </p>
-            <div className="text-right shrink-0">
-              <div className="flex items-baseline gap-2 justify-end">
-                <span
-                  className="text-3xl font-bold text-gray-800"
-                  style={{ fontFamily: "var(--font-caveat), cursive" }}
-                >
-                  from $12
-                </span>
-              </div>
-              <p
-                className="text-xs text-gray-400"
-                style={{ fontFamily: "var(--font-nunito), sans-serif" }}
-              >
-                Instant download
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={previewPending}
-            className="w-full bg-gradient-to-r from-amber-400 via-pink-400 to-purple-400 hover:from-amber-500 hover:via-pink-500 hover:to-purple-500 text-white font-bold py-4 px-8 shadow-lg hover:shadow-xl transition-all duration-300 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{
-              fontFamily: "var(--font-nunito), sans-serif",
-              borderRadius: "12px 16px 12px 18px",
-            }}
-          >
-            {previewPending
-              ? "✨ Generating your character… (takes ~30s)"
-              : "✨ Preview My Character →"}
-          </button>
-
-          <p
-            className="mt-4 text-center text-xs text-gray-400"
-            style={{ fontFamily: "var(--font-nunito), sans-serif" }}
-          >
-            Powered by Flux.1 &middot; Delivered as a printable PDF &middot;{" "}
-            <a href="/orders" className="text-pink-400 hover:text-pink-500">
-              Already ordered? Look up your order →
-            </a>
-          </p>
-        </div>
+        {/* Footer note */}
+        <p
+          className="text-center text-xs text-gray-400 pb-2"
+          style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+        >
+          Powered by Flux.1 &middot; Delivered as a printable PDF &middot;{" "}
+          <a href="/orders" className="text-pink-400 hover:text-pink-500">
+            Already ordered? Look up your order →
+          </a>
+        </p>
       </div>
     </form>
   );
