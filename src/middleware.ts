@@ -37,7 +37,13 @@ export async function middleware(request: NextRequest) {
   );
 
   // Refresh the session -- this is the critical call that renews expired JWTs.
-  await supabase.auth.getUser();
+  try {
+    await supabase.auth.getUser();
+  } catch (error) {
+    // If Supabase is unavailable, continue without refreshing session
+    // This prevents the middleware from hanging when Supabase is down
+    console.warn("Middleware: Failed to refresh Supabase session", error);
+  }
 
   return supabaseResponse;
 }

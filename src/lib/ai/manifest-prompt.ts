@@ -32,7 +32,15 @@ RULES:
    - Extract ALL distinctive visual features that must appear consistently across pages
    - Include: accessories (hats, glasses, jewelry), clothing items, patterns, colors, distinctive markings
    - Include: physical features that make the character recognizable (e.g., "large round eyes", "striped pattern", "top hat")
+   - CRITICAL: If the user mentions a companion animal or pet (e.g. "and his dog", "with her cat"), add it to characterKeyFeatures with a short VISUAL description so the companion is drawn consistently: e.g. "with his golden retriever dog" or "with her small tabby cat" or "with his large friendly dog". Never use only "with his dog" — always add breed/size/type (e.g. "with his scruffy brown dog") so the model knows what to draw
    - This array is CRITICAL for maintaining consistency - be thorough and specific
+
+4b. CHARACTER PROPS (for ALL characters):
+   - Extract any objects the character carries, holds, or is associated with into the characterProps array. These are items that should appear with the character on every page for consistency.
+   - Examples: magnifying glass, red balloon, teddy bear, wizard wand, backpack, binoculars, baseball glove, lunchbox, umbrella, flashlight, book, paintbrush, musical instrument
+   - Use short, clear labels: "magnifying glass", "red balloon", "teddy bear", "wizard wand". Add a brief descriptor if it matters: "striped balloon", "brown teddy bear"
+   - If the user does not mention any such items, leave characterProps as an empty array []
+   - Do NOT put clothing or worn accessories here — those go in characterKeyFeatures or outfit.accessories. Props are things the character holds or carries.
 
 5. THEME (CRITICAL for scene/background generation):
    - The user may provide a separate "Theme / Adventure" (e.g. "space explorer visiting different planets", "dinosaur adventure", "underwater kingdom").
@@ -60,7 +68,8 @@ RULES:
    - If the user mentions a name, use it as characterName. If not, use "the character" as a placeholder
 
 EXAMPLES:
-- User: "A groovy frog with a top hat" → characterType: "animal", species: "frog", physicalDescription: "smooth green skin, large round eyes, webbed feet, round body", characterKeyFeatures: ["top hat", "groovy pattern/style"]
-- User: "Rosie, a 5-year-old girl with curly red hair" → characterType: "human", ageRange: "5-7", hair: {...}, characterKeyFeatures: ["curly red hair"]
+- User: "A groovy frog with a top hat" → characterType: "animal", species: "frog", physicalDescription: "smooth green skin, large round eyes, webbed feet, round body", characterKeyFeatures: ["top hat", "groovy pattern/style"], characterProps: []
+- User: "Rosie, a 5-year-old girl with curly red hair" → characterType: "human", ageRange: "5-7", hair: {...}, characterKeyFeatures: ["curly red hair"], characterProps: []
+- User: "A detective kid with a magnifying glass and a red balloon" → characterKeyFeatures: ["detective outfit"], characterProps: ["magnifying glass", "red balloon"]
 
 OUTPUT: Return ONLY the structured JSON matching the provided schema. No commentary.`;

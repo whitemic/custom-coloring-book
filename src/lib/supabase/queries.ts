@@ -75,11 +75,15 @@ export async function updateOrderPreviews(
   previews: { imageUrl: string; seed: number }[],
 ): Promise<void> {
   const db = createServerClient();
+  // Serialize to plain JSON array so DB sees exact payload; select to confirm write
+  const payload = JSON.parse(JSON.stringify(previews));
   const { error } = await db
     .from("orders")
-    .update({ previews })
+    .update({ previews: payload })
     .eq("id", orderId)
-    .eq("status", "pending_payment");
+    .eq("status", "pending_payment")
+    .select("previews")
+    .single();
   if (error) throw error;
 }
 
@@ -300,6 +304,7 @@ export async function insertManifest(
       species: manifest.species,
       physical_description: manifest.physicalDescription,
       character_key_features: manifest.characterKeyFeatures ?? [],
+      character_props: manifest.characterProps ?? [],
       age_range: manifest.ageRange,
       hair: manifest.hair,
       skin_tone: manifest.skinTone,

@@ -10,14 +10,14 @@ export function AutoRefresh() {
   const [countdown, setCountdown] = useState(INTERVAL);
 
   useEffect(() => {
+    let count = INTERVAL;
     const tick = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          router.refresh();
-          return INTERVAL;
-        }
-        return prev - 1;
-      });
+      count -= 1;
+      if (count <= 0) {
+        router.refresh();
+        count = INTERVAL;
+      }
+      setCountdown(count);
     }, 1000);
 
     return () => clearInterval(tick);

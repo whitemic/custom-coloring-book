@@ -20,12 +20,11 @@ const PREMIUM_CENTS = 2500;
 export type PreviewOption = { imageUrl: string; seed: number };
 
 /**
- * Generate 3 Flux preview images for the character, create an order, store all 3 on it.
- * User picks one later via selectPreview; that choice is stored as preview_image_url/preview_seed.
+ * Create an order for preview generation and return the orderId immediately.
+ * This allows the client to start polling for progress while previews are generated.
  */
-export async function generatePreview(formData: FormData): Promise<{
+export async function createOrderForPreview(formData: FormData): Promise<{
   orderId: string;
-  previews: PreviewOption[];
   characterName: string;
   description: string;
   theme: string;
@@ -47,7 +46,32 @@ export async function generatePreview(formData: FormData): Promise<{
     priceTier: "standard",
   });
 
-  const prompt = composePreviewPrompt(description, characterName || undefined, theme || undefined);
+  return { orderId: order.id, characterName, description, theme };
+}
+
+/**
+ * Generate 3 Flux preview images for an existing order, store all 3 on it.
+ * User picks one later via selectPreview; that choice is stored as preview_image_url/preview_seed.
+ */
+export async function generatePreviewsForOrder(orderId: string): Promise<{
+  previews: PreviewOption[];
+}> {
+  const order = await getOrder(orderId);
+  const userInput = order.user_input as {
+    user_input?: string;
+    character_name?: string;
+    theme?: string;
+  } | null;
+
+  if (!userInput?.user_input) {
+    throw new Error("Order not found or missing description.");
+  }
+
+  const prompt = composePreviewPrompt(
+    userInput.user_input,
+    userInput.character_name || undefined,
+    userInput.theme || undefined
+  );
   const previews: PreviewOption[] = [];
 
   for (let i = 0; i < 3; i++) {
@@ -56,11 +80,42 @@ export async function generatePreview(formData: FormData): Promise<{
     // Persist immediately to Supabase Storage — Replicate CDN URLs expire in ~24h.
     const imageUrl = await persistImageToStorage(replicateUrl, order.id, `preview-${i}`);
     previews.push({ imageUrl, seed });
+    // Update previews incrementally so client can track progress
+    await updateOrderPreviews(orderId, previews);
   }
 
-  await updateOrderPreviews(order.id, previews);
+  return { previews };
+}
 
-  return { orderId: order.id, previews, characterName, description, theme };
+/**
+ * Generate 3 Flux preview images for the character, create an order, store all 3 on it.
+ * User picks one later via selectPreview; that choice is stored as preview_image_url/preview_seed.
+ * This is a convenience function that combines createOrderForPreview and generatePreviewsForOrder.
+ */
+export async function generatePreview(formData: FormData): Promise<{
+  orderId: string;
+  previews: PreviewOption[];
+  characterName: string;
+  description: string;
+  theme: string;
+}> {
+  const orderData = await createOrderForPreview(formData);
+  const { previews } = await generatePreviewsForOrder(orderData.orderId);
+
+  const order = await getOrder(orderData.orderId);
+  const userInput = order.user_input as {
+    user_input?: string;
+    character_name?: string;
+    theme?: string;
+  } | null;
+
+  return {
+    orderId: orderData.orderId,
+    previews,
+    characterName: orderData.characterName,
+    description: orderData.description,
+    theme: orderData.theme,
+  };
 }
 
 /**
@@ -68,6 +123,28 @@ export async function generatePreview(formData: FormData): Promise<{
  */
 export async function selectPreview(orderId: string, index: number): Promise<void> {
   await selectOrderPreview(orderId, index);
+}
+
+/**
+ * Get preview generation progress for an order.
+ * Returns the number of previews that have been generated so far (0-3).
+ */
+export async function getPreviewProgress(orderId: string): Promise<{
+  completed: number;
+  total: number;
+  previews: PreviewOption[];
+}> {
+  try {
+    const order = await getOrder(orderId);
+    const previews = (order.previews as PreviewOption[] | null) ?? [];
+    return {
+      completed: previews.length,
+      total: 3,
+      previews,
+    };
+  } catch {
+    return { completed: 0, total: 3, previews: [] };
+  }
 }
 
 /**
@@ -119,6 +196,11 @@ export async function createCheckoutSession(formData: FormData) {
   let order;
   if (orderId?.trim()) {
     order = await getOrder(orderId.trim());
+    if (!order.preview_image_url) {
+      throw new Error(
+        "Please select a character preview before checkout. Book generation requires your chosen character image.",
+      );
+    }
   } else {
     if (!description?.trim()) {
       throw new Error("Please describe your main character.");
