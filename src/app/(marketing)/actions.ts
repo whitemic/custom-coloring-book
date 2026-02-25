@@ -27,6 +27,11 @@ export async function createCheckoutSession(formData: FormData) {
   let order;
   if (orderId?.trim()) {
     order = await getOrder(orderId.trim());
+    if (!order.preview_image_url) {
+      throw new Error(
+        "Please select a character preview before checkout. Book generation requires your chosen character image.",
+      );
+    }
   } else {
     if (!description?.trim()) {
       throw new Error("Please describe your main character.");
