@@ -164,6 +164,8 @@ export function CheckoutForm({
   const [theme, setTheme] = useState("");
   const [pageTheme, setPageTheme] = useState("");
   const [selectedAdventure, setSelectedAdventure] = useState<AdventureKey | null>(null);
+  // Step 2 adventure selection (independent of step 1)
+  const [step2Adventure, setStep2Adventure] = useState<AdventureKey | null>(null);
 
   useEffect(() => {
     if (!initialCanceledOrderId) return;
@@ -227,6 +229,8 @@ export function CheckoutForm({
         // fall back to the plain theme if no adventure was selected
         pageTheme: pageTheme || result.theme,
       });
+      // Mirror step 1 adventure selection into step 2
+      setStep2Adventure(selectedAdventure);
     } catch (err) {
       setPreviewError(err instanceof Error ? err.message : "Failed to generate preview.");
     } finally {
@@ -263,6 +267,18 @@ export function CheckoutForm({
       setSelectedAdventure(key);
       setTheme(ADVENTURES[key].prompt);
       setPageTheme(ADVENTURES[key].pagePrompt);
+    }
+  };
+
+  const handleSelectStep2Adventure = (key: AdventureKey) => {
+    if (step2Adventure === key) {
+      setStep2Adventure(null);
+      setPreview((prev) => prev ? { ...prev, theme: "", pageTheme: "" } : null);
+    } else {
+      setStep2Adventure(key);
+      setPreview((prev) =>
+        prev ? { ...prev, theme: ADVENTURES[key].prompt, pageTheme: ADVENTURES[key].pagePrompt } : null
+      );
     }
   };
 
@@ -314,6 +330,148 @@ export function CheckoutForm({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Adventure picker */}
+          <div className="bg-white sketch-border p-6">
+            <h3
+              className="text-xl font-bold text-gray-800 mb-1"
+              style={{ fontFamily: "var(--font-caveat), cursive" }}
+            >
+              🗺️ Choose Your Adventure
+            </h3>
+            <p
+              className="text-sm text-gray-500 mb-4"
+              style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+            >
+              Pick a theme — or describe your own — for the coloring book pages
+            </p>
+
+            {/* Theme input with clear button */}
+            <div className="relative mb-4">
+              <input
+                type="text"
+                value={preview.theme}
+                onChange={(e) => {
+                  setStep2Adventure(null);
+                  setPreview((prev) =>
+                    prev ? { ...prev, theme: e.target.value, pageTheme: e.target.value } : null
+                  );
+                }}
+                placeholder="A magical journey through an enchanted forest..."
+                className="w-full sketch-input px-4 py-3 pr-9 text-gray-700"
+                style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+              />
+              {preview.theme && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep2Adventure(null);
+                    setPreview((prev) =>
+                      prev ? { ...prev, theme: "", pageTheme: "" } : null
+                    );
+                  }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  aria-label="Clear theme"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 16 16" fill="none">
+                    <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              )}
+            </div>
+
+            {/* Adventure shortcuts */}
+            <div className="grid grid-cols-4 gap-3 mb-4">
+              {(
+                Object.entries(ADVENTURES) as [
+                  AdventureKey,
+                  (typeof ADVENTURES)[AdventureKey],
+                ][]
+              ).map(([key, adv]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => handleSelectStep2Adventure(key)}
+                  className={`adventure-btn flex flex-col items-center p-3 bg-gradient-to-b ${adv.bg} border-2 ${adv.border} rounded-xl${step2Adventure === key ? " selected" : ""}`}
+                  style={{ borderRadius: "8px 12px 8px 14px" }}
+                >
+                  {adv.icon}
+                  <span
+                    className="text-xs font-semibold text-gray-600"
+                    style={{ fontFamily: "var(--font-caveat), cursive" }}
+                  >
+                    {adv.name.split(" ")[0]}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {/* Overview card */}
+            {step2Adventure ? (
+              <div
+                className={`bg-gradient-to-br ${ADVENTURES[step2Adventure].bg} border-2 ${ADVENTURES[step2Adventure].border} p-4`}
+                style={{ borderRadius: "10px 14px 10px 16px" }}
+              >
+                <div className="flex items-start gap-3">
+                  <div className="shrink-0 opacity-90">{ADVENTURES[step2Adventure].icon}</div>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="font-bold text-gray-800 text-lg leading-tight"
+                      style={{ fontFamily: "var(--font-caveat), cursive" }}
+                    >
+                      {ADVENTURES[step2Adventure].emoji} {ADVENTURES[step2Adventure].name}
+                    </p>
+                    <p
+                      className="text-xs text-gray-500 mt-0.5 mb-2"
+                      style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                    >
+                      Your book could include scenes like…
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {ADVENTURES[step2Adventure].scenes.map((scene) => (
+                        <span
+                          key={scene}
+                          className="inline-block bg-white/70 border border-white/80 rounded-full px-2 py-0.5 text-xs text-gray-700"
+                          style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                        >
+                          {scene}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : preview.theme.trim() ? (
+              <div
+                className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 p-4"
+                style={{ borderRadius: "10px 14px 10px 16px" }}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="text-3xl shrink-0">✏️</span>
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="font-bold text-gray-800 text-lg leading-tight"
+                      style={{ fontFamily: "var(--font-caveat), cursive" }}
+                    >
+                      Your Adventure
+                    </p>
+                    <p
+                      className="text-xs text-gray-600 mt-1 leading-relaxed"
+                      style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                    >
+                      {preview.theme}
+                    </p>
+                    <p
+                      className="text-xs text-gray-400 mt-2"
+                      style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                    >
+                      We&apos;ll craft 20 unique scenes around this theme ✨
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* Tier + checkout */}
@@ -394,7 +552,7 @@ export function CheckoutForm({
 
           <button
             type="button"
-            onClick={() => setPreview(null)}
+            onClick={() => { setPreview(null); setStep2Adventure(null); }}
             className="w-full text-sm text-gray-500 hover:text-gray-700 transition-opacity"
             style={{ fontFamily: "var(--font-caveat), cursive", fontSize: "1rem" }}
           >
