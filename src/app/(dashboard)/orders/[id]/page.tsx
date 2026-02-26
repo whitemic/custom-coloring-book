@@ -1,9 +1,11 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
 import { createAuthClient } from "@/lib/supabase/auth-server";
-import { getOrderBySessionId, getPagesByOrderId } from "@/lib/supabase/queries";
+import { getOrderBySessionId, getPagesByOrderId, getUserCredits } from "@/lib/supabase/queries";
 import type { OrderStatus, OrderRow, PageRow } from "@/types/database";
 import { AutoRefresh } from "./auto-refresh";
 import { PendingOrderView } from "./PendingOrderView";
+import { RegenerateButton } from "./RegenerateButton";
 
 const STATUS_LABELS: Record<
   OrderStatus,
@@ -51,7 +53,7 @@ const STATUS_LABELS: Record<
     emoji: "😢",
     label: "Something went wrong",
     description:
-      "We ran into a problem generating your book. Please contact support.",
+      "We ran into a problem generating your book. See below for how to reach our support team.",
     bg: "from-red-50 to-rose-50",
     border: "border-red-200",
   },
@@ -117,6 +119,11 @@ export default async function OrderDetailPage({
   if (!order) {
     notFound();
   }
+
+  // Fetch credit balance for the order email (null-safe — email only set post-payment)
+  const creditBalance = order.stripe_customer_email
+    ? await getUserCredits(order.stripe_customer_email).then((r) => r?.balance ?? 0).catch(() => 0)
+    : 0;
 
   const completedPages = pages.filter((p) => p.status === "complete");
   const totalPages = pages.length;
@@ -249,6 +256,39 @@ export default async function OrderDetailPage({
           </div>
         </dl>
 
+        {/* Failed-state support callout */}
+        {status === "failed" && (
+          <div className="mt-5 sketch-border rounded-3xl bg-gradient-to-br from-red-50 to-rose-50 border-2 border-red-200 p-5">
+            <h2
+              className="text-xl font-bold"
+              style={{
+                fontFamily: "var(--font-caveat), cursive",
+                color: "#991b1b",
+              }}
+            >
+              Need help?
+            </h2>
+            <p
+              className="mt-2 text-sm text-zinc-700"
+              style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+            >
+              Email us at{" "}
+              <a
+                href="mailto:support@storybookdreams.com"
+                className="font-semibold text-red-700 underline hover:text-red-800"
+              >
+                support@storybookdreams.com
+              </a>{" "}
+              and include your order reference:
+            </p>
+            <p
+              className="mt-2 font-mono text-xs text-zinc-600 bg-white/70 rounded-lg px-3 py-2 border border-red-100 w-fit"
+            >
+              {order.id as string}
+            </p>
+          </div>
+        )}
+
         {/* What you ordered */}
         {characterDescription && (
           <div className="mt-5 sketch-border rounded-3xl bg-gradient-to-br from-rose-50 to-pink-50 border-2 border-rose-200 p-5">
@@ -356,9 +396,38 @@ export default async function OrderDetailPage({
           </a>
         )}
 
+        {/* Credits callout — shown only on complete orders */}
+        {status === "complete" && (
+          <div className="mt-6 sketch-border rounded-3xl bg-gradient-to-br from-violet-50 to-purple-50 border-2 border-violet-200 p-5">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <h2
+                  className="text-2xl font-bold"
+                  style={{ fontFamily: "var(--font-caveat), cursive", color: "#5b21b6" }}
+                >
+                  ⭐ {creditBalance} credit{creditBalance !== 1 ? "s" : ""} available
+                </h2>
+                <p
+                  className="mt-1 text-sm text-violet-700"
+                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                >
+                  Not happy with a page? Hit <strong>↺ Regen</strong> on any thumbnail below to redraw it — costs 1 credit each.
+                </p>
+              </div>
+              <Link
+                href="/library/credits"
+                className="shrink-0 text-xs font-semibold py-2 px-4 rounded-xl bg-violet-100 border border-violet-300 text-violet-700 hover:bg-violet-200 transition-colors"
+                style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+              >
+                + Get more credits →
+              </Link>
+            </div>
+          </div>
+        )}
+
         {/* Page thumbnails */}
         {completedPages.length > 0 && (
-          <div className="mt-8 sketch-border rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 p-5">
+          <div className="mt-5 sketch-border rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-200 p-5">
             <h2
               className="mb-4 text-3xl font-bold"
               style={{
@@ -391,6 +460,13 @@ export default async function OrderDetailPage({
                     >
                       Page {page.page_number as number}
                     </div>
+                  )}
+                  {status === "complete" && creditBalance > 0 && (
+                    <RegenerateButton
+                      pageId={page.id as string}
+                      orderId={order.id as string}
+                      pageNumber={page.page_number as number}
+                    />
                   )}
                 </div>
               ))}

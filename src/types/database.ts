@@ -37,6 +37,8 @@ export interface OrderRow {
   updated_at: string;
   /** Set at checkout or from Stripe; used for model selection. */
   price_tier?: OrderPriceTier;
+  /** Whether the user opted in to share their completed book in the public library. */
+  library_opt_in: boolean;
 }
 
 export interface CharacterManifestRow {
@@ -83,6 +85,62 @@ export interface PageRow {
   created_at: string;
 }
 
+export type LibraryPurchaseStatus =
+  | "pending_payment"
+  | "generating"
+  | "complete"
+  | "failed";
+
+export type CreditTransactionType = "purchase" | "creator_earn" | "spend" | "purchase_bonus" | "page_regen";
+
+export interface LibraryPurchaseRow {
+  id: string;
+  stripe_checkout_session_id: string | null;
+  stripe_customer_email: string | null;
+  selected_page_ids: string[];
+  amount_cents: number | null;
+  credits_used: number;
+  status: LibraryPurchaseStatus;
+  pdf_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserCreditsRow {
+  email: string;
+  balance: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreditTransactionRow {
+  id: string;
+  email: string;
+  amount: number;
+  type: CreditTransactionType;
+  reference_id: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+export type PendingCreditPurchaseStatus = "pending" | "complete" | "expired";
+
+export interface PendingCreditPurchaseRow {
+  id: string;
+  email: string;
+  credits: number;
+  /** Filled in after the Stripe session is created. */
+  stripe_session_id: string | null;
+  stripe_price_id: string;
+  status: PendingCreditPurchaseStatus;
+  created_at: string;
+}
+
+export interface ProcessedWebhookEventRow {
+  stripe_event_id: string;
+  created_at: string;
+}
+
 /**
  * Supabase Database type map used by the typed client.
  */
@@ -113,6 +171,46 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Omit<PageRow, "id">>;
+      };
+      library_purchases: {
+        Row: LibraryPurchaseRow;
+        Insert: Omit<LibraryPurchaseRow, "id" | "created_at" | "updated_at"> & {
+          id?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<LibraryPurchaseRow, "id">>;
+      };
+      user_credits: {
+        Row: UserCreditsRow;
+        Insert: Omit<UserCreditsRow, "created_at" | "updated_at"> & {
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<UserCreditsRow, "email">>;
+      };
+      credit_transactions: {
+        Row: CreditTransactionRow;
+        Insert: Omit<CreditTransactionRow, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
+        Update: never;
+      };
+      pending_credit_purchases: {
+        Row: PendingCreditPurchaseRow;
+        Insert: Omit<PendingCreditPurchaseRow, "id" | "created_at"> & {
+          id?: string;
+          created_at?: string;
+        };
+        Update: Partial<Omit<PendingCreditPurchaseRow, "id" | "created_at">>;
+      };
+      processed_webhook_events: {
+        Row: ProcessedWebhookEventRow;
+        Insert: Omit<ProcessedWebhookEventRow, "created_at"> & {
+          created_at?: string;
+        };
+        Update: never;
       };
     };
   };

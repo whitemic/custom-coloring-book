@@ -2,7 +2,6 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import type { CharacterManifest } from "@/types/manifest";
 import { getModel } from "./models";
-import type { PriceTier } from "./config";
 
 // ---------------------------------------------------------------------------
 // Global Theme Context (called once per book)
@@ -36,9 +35,8 @@ Output themeDescription (one sentence), defaultBackgroundHints (8–12 visually 
 
 export async function generateGlobalThemeContext(
   manifest: CharacterManifest,
-  priceTier: PriceTier,
 ): Promise<GlobalThemeContext> {
-  const model = getModel("low", priceTier);
+  const model = getModel("low");
   const themeInput = `Character: ${manifest.characterName}, Type: ${manifest.characterType}, Theme: ${manifest.theme}${manifest.species ? `, Species: ${manifest.species}` : ""}`;
   const { object } = await generateObject({
     model,
@@ -97,9 +95,8 @@ export async function generatePageContext(
   manifest: CharacterManifest,
   scene: string,
   globalContext: GlobalThemeContext,
-  priceTier: PriceTier,
 ): Promise<PageContext> {
-  const model = getModel("low", priceTier);
+  const model = getModel("low");
   const prompt = `Theme: ${manifest.theme}
 Global hints: ${globalContext.defaultBackgroundHints.join(", ")}
 Scene: ${scene}
@@ -122,10 +119,9 @@ export async function generatePageContextsBatch(
   manifest: CharacterManifest,
   scenes: string[],
   globalContext: GlobalThemeContext,
-  priceTier: PriceTier,
 ): Promise<PageContext[]> {
   if (scenes.length === 0) return [];
-  const model = getModel("low", priceTier);
+  const model = getModel("low");
   const BatchPageContextsSchema = z.object({
     pages: z.array(PageContextSchema).length(scenes.length),
   });
