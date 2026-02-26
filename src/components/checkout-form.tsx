@@ -141,16 +141,6 @@ type PreviewState = {
   pageTheme: string;
 };
 
-const TIER_DESCRIPTIONS = {
-  standard: {
-    title: "Standard — $12",
-    desc: "Your character and scenes are designed with our standard AI. Great for most characters and themes.",
-  },
-  premium: {
-    title: "Premium — $25",
-    desc: "Upgraded AI designs your character and scenes with stronger consistency and a richer storybook feel across every page.",
-  },
-} as const;
 
 export function CheckoutForm({
   initialCanceledOrderId = null,
@@ -166,6 +156,7 @@ export function CheckoutForm({
   const [selectedAdventure, setSelectedAdventure] = useState<AdventureKey | null>(null);
   // Step 2 adventure selection (independent of step 1)
   const [step2Adventure, setStep2Adventure] = useState<AdventureKey | null>(null);
+  const [libraryOptIn, setLibraryOptIn] = useState(false);
 
   useEffect(() => {
     if (!initialCanceledOrderId) return;
@@ -474,13 +465,13 @@ export function CheckoutForm({
             ) : null}
           </div>
 
-          {/* Tier + checkout */}
+          {/* Checkout */}
           <div className="bg-white sketch-border p-6">
             <h3
               className="text-xl font-bold text-gray-800 mb-3"
               style={{ fontFamily: "var(--font-caveat), cursive" }}
             >
-              📖 Choose Your Book
+              📖 Your Coloring Book — $12
             </h3>
             <form action={formAction} className="space-y-4">
               <input type="hidden" name="orderId" value={preview.orderId} />
@@ -488,40 +479,56 @@ export function CheckoutForm({
               <input type="hidden" name="description" value={preview.description} />
               <input type="hidden" name="theme" value={preview.pageTheme || preview.theme} />
 
-              <div className="space-y-3">
-                {(["standard", "premium"] as const).map((tier) => {
-                  const t = TIER_DESCRIPTIONS[tier];
-                  return (
-                    <label
-                      key={tier}
-                      className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-amber-200 bg-amber-50/40 p-4 transition-all hover:bg-amber-50"
-                      style={{ borderRadius: "8px 12px 8px 14px" }}
+              {/* What's included */}
+              <div
+                className="rounded-xl border-2 border-amber-200 bg-amber-50/60 p-4 space-y-2"
+                style={{ borderRadius: "8px 12px 8px 14px" }}
+              >
+                {[
+                  { icon: "🖼️", text: "20 custom AI-illustrated pages" },
+                  { icon: "🤖", text: "Our best AI models — gpt-4o + Flux Kontext Pro" },
+                  { icon: "📄", text: "Printable PDF, ready to color" },
+                  { icon: "⭐", text: "5 regeneration credits included — redraw any page you're not happy with" },
+                ].map(({ icon, text }) => (
+                  <div key={text} className="flex items-start gap-2">
+                    <span className="text-base shrink-0">{icon}</span>
+                    <span
+                      className="text-sm text-gray-700"
+                      style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                     >
-                      <input
-                        type="radio"
-                        name="priceTier"
-                        value={tier}
-                        defaultChecked={tier === "standard"}
-                        className="mt-0.5 h-4 w-4 accent-amber-500"
-                      />
-                      <div>
-                        <span
-                          className="font-bold text-gray-800"
-                          style={{ fontFamily: "var(--font-caveat), cursive", fontSize: "1.1rem" }}
-                        >
-                          {t.title}
-                        </span>
-                        <p
-                          className="mt-0.5 text-xs text-gray-500"
-                          style={{ fontFamily: "var(--font-nunito), sans-serif" }}
-                        >
-                          {t.desc}
-                        </p>
-                      </div>
-                    </label>
-                  );
-                })}
+                      {text}
+                    </span>
+                  </div>
+                ))}
               </div>
+
+              {/* Library opt-in */}
+              <input type="hidden" name="libraryOptIn" value={libraryOptIn ? "true" : "false"} />
+              <label
+                className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-amber-100 bg-amber-50/20 p-4 transition-all hover:bg-amber-50/50"
+                style={{ borderRadius: "8px 12px 8px 14px" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={libraryOptIn}
+                  onChange={(e) => setLibraryOptIn(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 accent-amber-500 cursor-pointer"
+                />
+                <div>
+                  <span
+                    className="font-bold text-gray-700"
+                    style={{ fontFamily: "var(--font-caveat), cursive", fontSize: "1.05rem" }}
+                  >
+                    ✨ Add to the public library
+                  </span>
+                  <p
+                    className="mt-0.5 text-xs text-gray-500"
+                    style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                  >
+                    Share your character with the world and earn 1 credit every time someone downloads your pages.
+                  </p>
+                </div>
+              </label>
 
               {checkoutError && (
                 <p
@@ -545,7 +552,7 @@ export function CheckoutForm({
                   ? "Redirecting to checkout..."
                   : !canCheckout
                     ? "⬆️ Pick a character first"
-                    : "✨ Create My Coloring Book ✨"}
+                    : "✨ Create My Coloring Book — $12 ✨"}
               </button>
             </form>
           </div>
@@ -590,10 +597,20 @@ export function CheckoutForm({
                   Who is the Star?
                 </h2>
                 <p
-                  className="text-sm text-gray-500 mb-4"
+                  className="text-sm text-gray-500 mb-1"
                   style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
                   Describe your little one&apos;s character
+                </p>
+                <p
+                  className="text-xs text-gray-400 mb-4"
+                  style={{ fontFamily: "var(--font-nunito), sans-serif" }}
+                >
+                  Or{" "}
+                  <a href="/library" className="underline hover:text-gray-600">
+                    browse the library
+                  </a>{" "}
+                  to mix &amp; match from existing characters.
                 </p>
 
                 {/* Character name */}
@@ -733,7 +750,7 @@ export function CheckoutForm({
                   className="mt-2 text-center text-xs text-gray-400"
                   style={{ fontFamily: "var(--font-nunito), sans-serif" }}
                 >
-                  from $12 · 20 scenes · printable PDF
+                  $12 · 20 scenes · printable PDF · 5 free credits
                 </p>
               </div>
             </div>

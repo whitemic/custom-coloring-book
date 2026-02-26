@@ -5,7 +5,6 @@ import { z } from "zod";
 import type { CharacterManifest } from "@/types/manifest";
 import type { PageContext } from "./generate-context";
 import { getModel } from "./models";
-import type { PriceTier } from "./config";
 
 // ---------------------------------------------------------------------------
 // Seed generation
@@ -120,7 +119,6 @@ OUTPUT: Return exactly 3 pose strings.`;
  */
 export async function generatePosePalette(
   manifest: CharacterManifest,
-  priceTier: PriceTier,
 ): Promise<[string, string, string]> {
   const species =
     manifest.species ??
@@ -140,7 +138,7 @@ export async function generatePosePalette(
     }
   }
 
-  const model = getModel("low", priceTier);
+  const model = getModel("low");
   const { object } = await generateObject({
     model,
     schema: PosePaletteSchema,
@@ -209,10 +207,9 @@ OUTPUT: Return exactly 3 scene objects in the provided JSON schema.`;
  */
 export async function generateSceneDescriptions(
   manifest: CharacterManifest,
-  priceTier: PriceTier,
 ): Promise<string[]> {
   // Step 1: generate species-authentic poses via LLM
-  const poses = await generatePosePalette(manifest, priceTier);
+  const poses = await generatePosePalette(manifest);
 
   // Step 2: build character description for the scene generation prompt
   let characterDesc = `Name: ${manifest.characterName}\n`;
@@ -247,7 +244,7 @@ export async function generateSceneDescriptions(
 
   characterDesc += `Theme: ${manifest.theme}\n`;
 
-  const model = getModel("low", priceTier);
+  const model = getModel("low");
   const { object } = await generateObject({
     model,
     schema: ScenesSchema,

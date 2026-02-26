@@ -14,7 +14,6 @@ import {
   getPagesByOrderId,
   updatePageImage,
 } from "@/lib/supabase/queries";
-import { getPriceTierFromOrder } from "@/lib/ai/config";
 import { generateCharacterManifest } from "@/lib/ai/generate-manifest";
 import {
   generateSceneDescriptions,
@@ -55,12 +54,13 @@ const MAX_QUALITY_RETRIES = 2;
 export const generateBook = inngest.createFunction(
   {
     id: "generate-book",
-    retries: 10,
+    retries: 3,
   },
   { event: "order/created" },
   async ({ event, step }) => {
     const { orderId } = event.data;
 
+    try {
     // ----- Step 1: Generate Character Manifest (idempotent) -----
     await step.run("generate-manifest", async () => {
       const order = await getOrder(orderId);
@@ -91,14 +91,11 @@ export const generateBook = inngest.createFunction(
       const userInputForManifest = description?.trim() ?? "";
       const themeHint = themeFromForm?.trim();
 
-      const priceTier = getPriceTierFromOrder(order);
-
       let manifestRow = await getManifestByOrderId(orderId);
 
       if (!manifestRow) {
         const manifest = await generateCharacterManifest(
           userInputForManifest,
-          priceTier,
           themeHint,
         );
         manifestRow = await insertManifest(
@@ -130,14 +127,13 @@ export const generateBook = inngest.createFunction(
         negativeTags: manifestRow.negative_tags,
       };
 
-      const scenes = await generateSceneDescriptions(manifest, priceTier);
+      const scenes = await generateSceneDescriptions(manifest);
 
-      const globalContext = await generateGlobalThemeContext(manifest, priceTier);
+      const globalContext = await generateGlobalThemeContext(manifest);
       const pageContexts = await generatePageContextsBatch(
         manifest,
         scenes,
         globalContext,
-        priceTier,
       );
 
       const pageInserts = scenes.map((scene, idx) => {
@@ -322,5 +318,16 @@ export const generateBook = inngest.createFunction(
     });
 
     return { orderId, status: "complete" };
+    } catch (err) {
+      // Mark the order failed so the polling UI transitions out of the loading state.
+      // Using step.run ensures the DB write is itself retried if it transiently fails.
+      await step.run("mark-order-failed", async () => {
+        await updateOrderStatus(orderId, "failed");
+        console.error(`Order ${orderId} failed permanently:`, err);
+      });
+
+      // Re-throw so Inngest records the function run as failed.
+      throw err;
+    }
   },
 );

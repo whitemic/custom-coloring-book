@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { getStripe } from "@/lib/stripe/client";
-import { insertOrder, getOrder, updateOrderPreview, updateOrderPreviews, selectOrderPreview } from "@/lib/supabase/queries";
+import { insertOrder, getOrder, updateOrderPreview, updateOrderPreviews, selectOrderPreview, updateOrderLibraryOptIn, debitUserCredits, resetPageForRegen, getPagesByOrderId } from "@/lib/supabase/queries";
+import { inngest } from "@/lib/inngest/client";
 import { runReplicatePrediction } from "@/lib/ai/client";
 import { composePreviewPrompt } from "@/lib/ai/generate-pages";
 import { persistImageToStorage } from "@/lib/utils/images";
@@ -13,9 +14,8 @@ function getBaseUrl() {
   return "http://localhost:3000";
 }
 
-/** Price in cents: Standard $12, Premium $25 */
-const STANDARD_CENTS = 1200;
-const PREMIUM_CENTS = 2500;
+/** Price in cents: $12 */
+const PRICE_CENTS = 1200;
 
 export type PreviewOption = { imageUrl: string; seed: number };
 
@@ -188,10 +188,7 @@ export async function createCheckoutSession(formData: FormData) {
   const characterName = formData.get("characterName") as string;
   const description = formData.get("description") as string;
   const theme = formData.get("theme") as string;
-  const priceTier = (formData.get("priceTier") as string) || "standard";
-
-  const tier = priceTier === "premium" ? "premium" : "standard";
-  const amountCents = tier === "premium" ? PREMIUM_CENTS : STANDARD_CENTS;
+  const libraryOptIn = formData.get("libraryOptIn") === "true";
 
   let order;
   if (orderId?.trim()) {
@@ -200,6 +197,10 @@ export async function createCheckoutSession(formData: FormData) {
       throw new Error(
         "Please select a character preview before checkout. Book generation requires your chosen character image.",
       );
+    }
+    // Persist the library opt-in choice before redirecting to Stripe
+    if (libraryOptIn !== order.library_opt_in) {
+      await updateOrderLibraryOptIn(orderId.trim(), libraryOptIn);
     }
   } else {
     if (!description?.trim()) {
@@ -211,7 +212,7 @@ export async function createCheckoutSession(formData: FormData) {
         character_name: characterName ?? "",
         theme: theme ?? "",
       },
-      priceTier: tier,
+      priceTier: "standard",
     });
   }
 
@@ -226,10 +227,10 @@ export async function createCheckoutSession(formData: FormData) {
       {
         price_data: {
           currency: "usd",
-          unit_amount: amountCents,
+          unit_amount: PRICE_CENTS,
           product_data: {
-            name: tier === "premium" ? "Custom Coloring Book — Premium" : "Custom Coloring Book — Standard",
-            description: `A personalized coloring book featuring ${displayName}`,
+            name: "Custom Coloring Book",
+            description: `A personalized 20-page coloring book featuring ${displayName}`,
           },
         },
         quantity: 1,
@@ -237,7 +238,7 @@ export async function createCheckoutSession(formData: FormData) {
     ],
     metadata: {
       order_id: order.id,
-      price_tier: tier,
+      price_tier: "standard",
     },
     success_url: `${getBaseUrl()}/orders/pending?session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${getBaseUrl()}/?canceled=1&order_id=${order.id}`,
@@ -251,3 +252,48 @@ export async function createCheckoutSession(formData: FormData) {
   redirect(session.url);
 }
 
+/**
+ * Spend 1 credit to regenerate a single completed page.
+ *
+ * Guards:
+ * - Page must belong to the given order
+ * - Page must currently be "complete" (not mid-generation)
+ * - Order must have a customer email (set after payment)
+ * - Buyer must have ≥ 1 credit
+ */
+export async function regeneratePage(
+  pageId: string,
+  orderId: string,
+): Promise<void> {
+  const order = await getOrder(orderId);
+
+  const email = order.stripe_customer_email;
+  if (!email) {
+    throw new Error("Order email not found. Cannot verify credit balance.");
+  }
+
+  const pages = await getPagesByOrderId(orderId);
+  const page = pages.find((p) => p.id === pageId);
+  if (!page) {
+    throw new Error("Page not found on this order.");
+  }
+  if (page.status !== "complete") {
+    throw new Error("This page is already being regenerated.");
+  }
+
+  const debitResult = await debitUserCredits(
+    email,
+    1,
+    `1 credit spent to regenerate page ${page.page_number} on order ${orderId}`,
+  );
+  if (!debitResult.success) {
+    throw new Error(debitResult.error);
+  }
+
+  await resetPageForRegen(pageId);
+
+  await inngest.send({
+    name: "page/regenerate",
+    data: { pageId, orderId, email },
+  });
+}

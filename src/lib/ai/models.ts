@@ -1,26 +1,15 @@
 import { openai } from "@ai-sdk/openai";
-import {
-  AI_MODEL_MANIFEST,
-  AI_MODEL_COMPLEX,
-  type PriceTier,
-} from "./config";
+import { AI_MODEL_MANIFEST, AI_MODEL_COMPLEX } from "./config";
 
 /** Return type is compatible with Vercel AI SDK generateObject({ model }) */
 type LanguageModel = ReturnType<typeof openai>;
 
 /**
- * Get the appropriate language model for the given complexity and price tier.
- * Standard tier: always gpt-4o-mini (maintains 80%+ margins).
- * Premium tier: low = gpt-4o-mini, high = gpt-4o (or claude-3-5-sonnet via fallback at call site).
+ * Get the appropriate language model for the given complexity.
+ * low  → gpt-4o-mini (fast, cheap; used for scene/context generation)
+ * high → gpt-4o      (highest quality; used for manifest + quality gate)
  */
-export function getModel(
-  complexity: "low" | "high",
-  priceTier: PriceTier,
-): LanguageModel {
-  if (priceTier === "standard") {
-    return openai(AI_MODEL_MANIFEST);
-  }
-  // Premium tier
+export function getModel(complexity: "low" | "high"): LanguageModel {
   if (complexity === "low") {
     return openai(AI_MODEL_MANIFEST);
   }
